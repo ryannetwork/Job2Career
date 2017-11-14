@@ -1,0 +1,154 @@
+package com.intel.analytics.bigdl.apps.recommendation
+
+import com.intel.analytics.bigdl.dataset.Sample
+import com.intel.analytics.bigdl.tensor.Tensor
+import com.intel.analytics.bigdl.utils.T
+import org.apache.spark.ml.Pipeline
+import org.apache.spark.ml.feature.{LabeledPoint, StringIndexer}
+import org.apache.spark.ml.linalg.Vectors
+import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.DataFrame
+import org.apache.spark.sql.functions.{col, max, rand, udf}
+
+import scala.collection.mutable
+import scala.util.Random
+
+object Utils {
+
+  val add1 = udf((num: Double) => num + 1)
+
+
+  def addNegativeSample1(indexedDF: DataFrame) = {
+
+    val row = indexedDF.agg(max("userIdIndex"), max("itemIdIndex")).head
+    val (userCount, itemCount) = (row.getAs[Double](0).toInt, row.getAs[Double](1).toInt)
+
+    println(userCount + "," + itemCount)
+    val sampleDict = indexedDF.rdd.map(row => row(0) + "," + row(1)).collect().toSet
+
+    val numberRecords = 1 * indexedDF.count
+
+    import indexedDF.sparkSession.implicits._
+
+    val ran = new Random(seed = 42L)
+    val negativeSampleDF = indexedDF.sparkSession.sparkContext
+      .parallelize(0 to numberRecords.toInt)
+      .map(x => {
+        val uid = Math.max(ran.nextInt(userCount), 1)
+        val iid = Math.max(ran.nextInt(itemCount), 1)
+        (uid, iid)
+      })
+      .filter(x => !sampleDict.contains(x._1 + "," + x._2)).distinct()
+      .map(x => (x._1, x._2, 0.0))
+      .toDF("userIdIndex", "itemIdIndex", "label")
+
+    indexedDF.union(negativeSampleDF)
+  }
+
+  def addNegativeSample(indexedDF: DataFrame) = {
+
+    val row = indexedDF.agg(max("userIdIndex"), max("itemIdIndex")).head
+    val (userCount, itemCount) = (row.getAs[Double](0).toInt, row.getAs[Double](1).toInt)
+
+    println(userCount + "," + itemCount)
+    val sampleDict = indexedDF.rdd.map(row => row(0) + "," + row(1)).collect().toSet
+
+    val numberRecords = 1 * indexedDF.count
+
+    import indexedDF.sparkSession.implicits._
+
+    val ran = new Random(seed = 42L)
+    val negativeSampleDF = indexedDF.sparkSession.sparkContext
+      .parallelize(0 to numberRecords.toInt)
+      .map(x => {
+        val uid = Math.max(Random.nextInt(userCount), 1)
+        val iid = Math.max(Random.nextInt(itemCount), 1)
+        (uid, iid)
+      })
+      .filter(x => !sampleDict.contains(x._1 + "," + x._2)).distinct()
+      .map(x => (x._1, x._2, 0.0))
+      .toDF("userIdIndex", "itemIdIndex", "label")
+
+    indexedDF.union(negativeSampleDF)
+  }
+
+  def df2rddOfSample(indexed: DataFrame): RDD[Sample[Float]] = {
+
+    val rddOfSample = indexed.rdd.map(row => {
+      val uid = row.getAs[Double](0).toFloat
+      val iid = row.getAs[Double](1).toFloat
+      val label = row.getAs[Double](2).toFloat
+
+      val feature: Tensor[Float] = Tensor(T(uid, iid))
+      Sample(feature, label)
+    })
+    rddOfSample
+  }
+
+  val df2LP: (DataFrame) => DataFrame = df => {
+    import df.sparkSession.implicits._
+    df.select("userIdIndex", "itemIdIndex", "label").rdd.map { r =>
+      val f = Vectors.dense(r.getDouble(0), r.getDouble(1))
+      require(f.toArray.take(2).forall(_ >= 0))
+      val l = r.getDouble(2)
+      LabeledPoint(l, f)
+    }.toDF().orderBy(rand()).cache()
+  }
+
+  val toZero = udf { d: Double =>
+    if (d > 1) 1.0 else 0.0
+  }
+
+  def getCosineSim = {
+    val func =
+      (arg1: mutable.WrappedArray[Float], arg2: mutable.WrappedArray[Float]) =>
+        math.abs(Similarity.cosineSimilarity(arg1.toArray, arg2.toArray))
+    udf(func)
+  }
+
+  val sizeFilter = {
+    val func = (arg: mutable.WrappedArray[Any]) =>
+      if ((arg.toArray.length) > 1) true else false
+    udf(func)
+  }
+
+  def score2label(cutPoint: Float) = {
+    val func = (arg: Float) => if (arg > cutPoint) 1.0 else 0.0
+    udf(func)
+  }
+
+  def calculatePreRec(cutPoint: Float, dfin: DataFrame) = {
+    val df = dfin.withColumn("prediction", score2label(cutPoint)(col("score")))
+    val groundPositive = df.filter(col("label") === 1.0).count()
+    val predictedPositive = df.filter(col("prediction") === 1.0).count()
+    val truePositive = df.filter(col("label") === 1.0 && col("prediction") === 1.0).count().toFloat
+    val precision = truePositive / predictedPositive
+    val recall = truePositive / groundPositive
+    (cutPoint, precision, recall)
+  }
+
+  val score2bucket = {
+    val func = (arg: Float) => (arg * 10).toInt
+    udf(func)
+  }
+
+  def toDecile(df: DataFrame) = {
+
+    def num2percent(total: Long) = {
+      val func = (arg: Long) => arg.toFloat / total
+      udf(func)
+    }
+
+    val groundPositive = df.filter(col("label") === 1.0).count()
+
+    df.filter(col("label") === 1.0)
+      .withColumn("bucket", score2bucket(col("score")))
+      .groupBy("bucket").count()
+      .withColumn("percent", num2percent(groundPositive)(col("count")))
+  }
+
+  def toDecimal(n: Int) = {
+    (arg: Double) => BigDecimal(arg).setScale(n, BigDecimal.RoundingMode.HALF_UP).toDouble
+  }
+
+}
