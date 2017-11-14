@@ -1,7 +1,7 @@
 package com.intel.analytics.bigdl.apps.job2Career
 
 import com.intel.analytics.bigdl.apps.recommendation.Utils._
-import com.intel.analytics.bigdl.apps.recommendation.{Evaluation, Model, ModelParam}
+import com.intel.analytics.bigdl.apps.recommendation.{Evaluation, ModelUtils, ModelParam}
 import com.intel.analytics.bigdl.nn._
 import com.intel.analytics.bigdl.optim.Adam
 import com.intel.analytics.bigdl.tensor.TensorNumericMath.TensorNumeric.NumericFloat
@@ -52,7 +52,7 @@ object TrainWithNCF {
       midLayers = Array(40, 20),
       labels = 2)
 
-    val recModel = new Model(modelParam)
+    val recModel = new ModelUtils(modelParam)
 
     // val model = recModel.ncf(userCount, itemCount)
     val model = recModel.mlp(userCount, itemCount)

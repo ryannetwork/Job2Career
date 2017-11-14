@@ -18,6 +18,7 @@
                 <!-- TODO: Cleanup  -->
 
                 <include>com.intel.analytics.bigdl:bigdl-spark-2_0</include>
+                <include>com.github.scopt:scopt_2.11</include>
 
             </includes>
         </dependencySet>

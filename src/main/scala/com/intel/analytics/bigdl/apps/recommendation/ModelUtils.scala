@@ -19,7 +19,7 @@ case class ModelParam(userEmbed: Int = 20,
   }
 }
 
-class Model(modelParam: ModelParam) {
+class ModelUtils(modelParam: ModelParam) {
 
   def this() = {
     this(ModelParam())
