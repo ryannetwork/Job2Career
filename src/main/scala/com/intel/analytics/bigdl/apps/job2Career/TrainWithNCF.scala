@@ -32,7 +32,7 @@ object TrainWithNCF {
     val userCount = spark.read.parquet(input + "/userDict").select("userIdIndex").distinct().count().toInt
     val itemCount = spark.read.parquet(input + "/itemDict").select("itemIdIndex").distinct().count().toInt
 
-    val dataWithNegative = addNegativeSample(indexed)
+    val dataWithNegative = addNegativeSample(5, indexed)
       .withColumn("userIdIndex", add1(col("userIdIndex")))
       .withColumn("itemIdIndex", add1(col("itemIdIndex")))
       .withColumn("label", add1(col("label")))

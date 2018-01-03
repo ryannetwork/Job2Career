@@ -1,8 +1,9 @@
 package com.intel.analytics.bigdl.apps.job2Career
 
-import com.intel.analytics.bigdl.apps.job2Career.DataProcess.{createResumeId, removeHTMLTag}
 import com.intel.analytics.bigdl.apps.recommendation.Utils._
+import com.intel.analytics.bigdl.utils.Engine
 import org.apache.log4j.{Level, Logger}
+import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.sql.{DataFrame, SQLContext, SparkSession}
 import org.apache.spark.sql.functions.{col, udf}
@@ -14,8 +15,6 @@ import scala.io.Source
 object TrainWithD2VGlove {
 
   val gloveDir = s"/glove.6B/"
-  val resumePath = "/"
-  val jobPath = "/"
 
   val stopWordSet = Set("is", "the", "are", "we")
 
@@ -64,89 +63,54 @@ object TrainWithD2VGlove {
   }
 
 
-  def createDocVec(sqlContext: SQLContext): (DataFrame, DataFrame) = {
-
-    val lookupMap = loadWordVecMap(gloveDir)
-
-    val brMap = sqlContext.sparkContext.broadcast(lookupMap)
-
-    val jobDF = sqlContext.read.parquet(jobPath)
-      .withColumn("description", removeHTMLTag(col("description")))
-    val jobVecDF = doc2VecFromWordMap(jobDF, brMap, "job_vec", "description")
-      .select("jobid", "job_vec")
-
-    val resumeDF = sqlContext.read.parquet(resumePath)
-      .withColumn("resume_id", createResumeId(col("resume_url")))
-      .select("resume_id", "resume.resume.body")
-      .withColumnRenamed("resume.resume.body", "body")
-
-    val resumeVecDF = doc2VecFromWordMap(resumeDF, brMap, "resume_vec", "body").select("resume_id", "resume_vec")
-
-    (jobVecDF, resumeVecDF)
-
-  }
-
   def main(args: Array[String]): Unit = {
 
     Logger.getLogger("org").setLevel(Level.ERROR)
+
+    val conf = new SparkConf()
+      .setMaster("local[8]")
+      .setAppName("app")
+
+    val sc = new SparkContext(conf)
     val spark = SparkSession.builder().getOrCreate()
     spark.sparkContext.setLogLevel("ERROR")
 
     // val input = "/Users/guoqiong/intelWork/projects/jobs2Career/data/"
     val input = "/Users/guoqiong/intelWork/projects/jobs2Career/data/indexed_application_job_resume_2016_2017_10"
 
-    val lookupDict = "/Users/guoqiong/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.50d.txt"
+    // val joined = DataProcess.negativeJoin(indexed, itemDict, userDict, br)
+    // val joined = DataProcess.crossJoinAll(userDict, itemDict, br, indexed, 100)
 
-    val dict = loadWordVecMap(lookupDict)
-    val br = spark.sparkContext.broadcast(dict)
+    val joined = spark.read.parquet(input + "/NEG")
+    //val joined = spark.read.parquet(input + "/ALL")
 
-    val indexed = spark.read.parquet(input + "/indexed")
-    val indexedWithNegative = addNegativeSample(indexed)
+    joined.filter("label = 1").groupBy("userIdIndex").count()
+      .withColumnRenamed("count", "applyJobCount")
+      .groupBy("applyJobCount").count()
+      .orderBy("applyJobCount").show(1000, false)
 
-    val userDict_temp = spark.read.parquet(input + "/userDict")
-      .filter(col("userDoc").isNotNull)
-    val userDict = doc2VecFromWordMap(userDict_temp, br, "userVec", "userDoc")
-      .filter(sizeFilter(col("userVec")))
-
-    val itemDict_temp = spark.read.parquet(input + "/itemDict")
-      .filter(col("itemDoc").isNotNull)
-
-    val itemDict = doc2VecFromWordMap(itemDict_temp, br, "itemVec", "itemDoc")
-      .filter(sizeFilter(col("itemVec")))
-
-    val time1 = System.nanoTime()
-
-    val joined = indexedWithNegative
-      .join(userDict, indexedWithNegative("userIdIndex") === userDict("userIdIndex"))
-      .join(itemDict, indexedWithNegative("itemIdIndex") === itemDict("itemIdIndex"))
-      .select(userDict("userIdIndex"), itemDict("itemIdIndex"), col("label"), col("userVec"), col("itemVec"))
-      .withColumn("cosineSimilarity", getCosineSim(col("userVec"), col("itemVec")))
-      .sort(col("cosineSimilarity").desc)
-      .withColumnRenamed("cosineSimilarity", "score")
+    joined.filter("label = 0").groupBy("userIdIndex").count()
+      .withColumnRenamed("count", "notApplyJobCount")
+      .groupBy("notApplyJobCount").count()
+      .orderBy("notApplyJobCount").show(1000, false)
 
     joined.cache()
 
     joined.show(5)
 
-    val precisionRecall = (0.1 to 0.9 by 0.1)
-      .map(x => calculatePreRec(x.toFloat, joined))
-      .sortBy(-_._1)
+    val precisionRecall = getPrecisionRecall(joined)
+    precisionRecall.foreach(x => println(x._1 + "," + x._2 + "," + x._3))
 
-    precisionRecall.foreach(x => println(x.toString))
+    val buckets = bucketize(joined).orderBy(col("bucket").desc)
+    buckets.show(100)
 
-    val decile = toDecile(joined).orderBy(col("bucket").desc)
-    decile.show
+    Seq(3, 5, 10, 15, 20, 30).map(x => {
 
-    val out = userDict.select("userIdIndex", "userVec").
-      join(itemDict.select("itemIdIndex", "itemVec"))
-      .withColumn("cosineSimilarity", getCosineSim(col("userVec"), col("itemVec")))
-      .sort(col("cosineSimilarity").desc)
+      val (ratio, ndcg) = getHitRatioNDCG(joined, x)
+      x + "," + ratio + "," + ndcg
 
-    // out.show()
+    }).foreach(println)
 
-    val time2 = System.nanoTime()
-    val rankTime = (time2 - time1) * (1e-9)
-    println("rankTime (s):  " + rankTime)
   }
 
 }

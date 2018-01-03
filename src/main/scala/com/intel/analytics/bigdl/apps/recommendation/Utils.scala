@@ -8,7 +8,8 @@ import org.apache.spark.ml.feature.{LabeledPoint, StringIndexer}
 import org.apache.spark.ml.linalg.Vectors
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.DataFrame
-import org.apache.spark.sql.functions.{col, max, rand, udf}
+import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.functions._
 
 import scala.collection.mutable
 import scala.util.Random
@@ -45,7 +46,7 @@ object Utils {
     indexedDF.union(negativeSampleDF)
   }
 
-  def addNegativeSample(indexedDF: DataFrame) = {
+  def addNegativeSample(amplyfiler: Int, indexedDF: DataFrame) = {
 
     val row = indexedDF.agg(max("userIdIndex"), max("itemIdIndex")).head
     val (userCount, itemCount) = (row.getAs[Double](0).toInt, row.getAs[Double](1).toInt)
@@ -53,7 +54,7 @@ object Utils {
     println(userCount + "," + itemCount)
     val sampleDict = indexedDF.rdd.map(row => row(0) + "," + row(1)).collect().toSet
 
-    val numberRecords = 1 * indexedDF.count
+    val numberRecords = amplyfiler * indexedDF.count
 
     import indexedDF.sparkSession.implicits._
 
@@ -127,12 +128,62 @@ object Utils {
     (cutPoint, precision, recall)
   }
 
+  def getPrecisionRecall(dataframe: DataFrame) = {
+
+    val groundPositive = dataframe.filter(col("label") === 1.0).count()
+
+    val predictSummary = getCutPointSummary(dataframe)
+    val predictLabelSummary = getCutPointSummary(dataframe.filter(col("label") === 1.0))
+
+    predictSummary.map(predictedPositive => {
+      val truePositive = predictLabelSummary(predictedPositive._1)
+      val precision = truePositive / predictedPositive._2
+      val recall = truePositive / groundPositive
+      (predictedPositive._1, precision, recall)
+    }
+    ).toArray.sortBy(x => x._1)
+  }
+
+  def getCutPointSummary(dataframe: DataFrame): Map[Float, Float] = {
+
+    dataframe.select("score").rdd
+      .map(x => x.getFloat(0))
+      .flatMap(x => {
+        (0.02 to 0.98 by 0.02).map(cutPoint => if (x > cutPoint) (cutPoint, 1.0) else (cutPoint, 0.0))
+      }).reduceByKey(_ + _).collect().map(x => (x._1.toFloat, x._2.toFloat)).toMap
+
+  }
+
+  def getHitRatioNDCG(dfin: DataFrame, K: Int = 30): (Double, Double) = {
+
+    val w2 = Window.partitionBy("userIdIndex").orderBy(desc("score"))
+    val ranked = dfin.withColumn("rank", rank.over(w2)).where(col("rank") <= K)
+
+    val w1 = Window.partitionBy("userIdIndex").orderBy(desc("label"))
+    val selected = ranked.withColumn("rn", row_number.over(w1)).where(col("rn") === 1).drop("rn")
+
+    val ndcgUdf = udf((rank: Int, label: Int) => if (label == 1) math.log(2) / math.log(rank + 1) else 0)
+
+    val df = selected.withColumn("hit", when(col("label").isNull or col("label") === 0, 0).otherwise(1))
+      .withColumn("ndcg", when(col("label").isNotNull, ndcgUdf(col("rank"), col("label"))).otherwise(0))
+
+    df.filter("label = 0").count()
+
+    val resultDF = df.groupBy("userIdIndex")
+      .agg(sum("hit"), sum("ndcg"))
+      .agg(avg(col("sum(hit)")), avg("sum(ndcg)"))
+
+    val r = resultDF.rdd.take(1).map(row => (row.getDouble(0), row.getDouble(1)))
+
+    r(0)
+  }
+
   val score2bucket = {
     val func = (arg: Float) => (arg * 10).toInt
     udf(func)
   }
 
-  def toDecile(df: DataFrame) = {
+  def bucketize(df: DataFrame) = {
 
     def num2percent(total: Long) = {
       val func = (arg: Long) => arg.toFloat / total

@@ -9,7 +9,12 @@ import org.apache.spark.sql._
 import scala.collection.immutable
 import scala.io.Source
 import com.intel.analytics.bigdl.apps.job2Career.DataProcess._
+import com.intel.analytics.bigdl.apps.job2Career.TrainWithD2VGlove.{doc2VecFromWordMap, loadWordVecMap}
+import com.intel.analytics.bigdl.apps.recommendation.Utils.{addNegativeSample, getCosineSim, sizeFilter}
 import org.apache.log4j.{Level, Logger}
+import org.apache.spark.sql.expressions.Window
+
+import scala.util.Random
 
 
 class DataProcess {
@@ -125,6 +130,49 @@ object DataProcess {
     (indexed, userDict, itemDict)
   }
 
+  def negativeJoin(indexed: DataFrame, itemDictOrig: DataFrame, userDictOrig: DataFrame, br: Broadcast[Map[String, Array[Float]]]): DataFrame = {
+
+    val userDict = doc2VecFromWordMap(userDictOrig, br, "userVec", "userDoc")
+      .filter(sizeFilter(col("userVec")))
+
+    val itemDict = doc2VecFromWordMap(itemDictOrig, br, "itemVec", "itemDoc")
+      .filter(sizeFilter(col("itemVec")))
+
+    val indexedWithNegative = addNegativeSample(5, indexed)
+
+    val joined = indexedWithNegative
+      .join(userDict, indexedWithNegative("userIdIndex") === userDict("userIdIndex"))
+      .join(itemDict, indexedWithNegative("itemIdIndex") === itemDict("itemIdIndex"))
+      .select(userDict("userIdIndex"), itemDict("itemIdIndex"), col("label"), col("userVec"), col("itemVec"))
+      .withColumn("cosineSimilarity", getCosineSim(col("userVec"), col("itemVec")))
+      .sort(col("cosineSimilarity").desc)
+      .withColumnRenamed("cosineSimilarity", "score")
+      .select("userIdIndex", "itemIdIndex", "score", "label")
+
+    joined
+
+  }
+
+
+  def crossJoinAll(userDictOrig: DataFrame, itemDictOrig: DataFrame, br: Broadcast[Map[String, Array[Float]]], indexed: DataFrame, K: Int = 50): DataFrame = {
+
+    val userDict = doc2VecFromWordMap(userDictOrig, br, "userVec", "userDoc")
+      .filter(sizeFilter(col("userVec")))
+
+    val itemDict = doc2VecFromWordMap(itemDictOrig, br, "itemVec", "itemDoc")
+      .filter(sizeFilter(col("itemVec")))
+
+    val outAll = userDict.select("userIdIndex", "userVec").
+      crossJoin(itemDict.select("itemIdIndex", "itemVec"))
+      .withColumn("score", getCosineSim(col("userVec"), col("itemVec")))
+      .drop("itemVec", "userVec")
+
+    val w1 = Window.partitionBy("userIdIndex").orderBy(desc("score"))
+    val rankDF = outAll.withColumn("rank", rank.over(w1)).where(col("rank") <= K).drop("rank")
+
+    rankDF.join(indexed, Seq("userIdIndex", "itemIdIndex"), "leftouter")
+  }
+
   def main(args: Array[String]): Unit = {
 
     Logger.getLogger("org").setLevel(Level.ERROR)
@@ -132,6 +180,8 @@ object DataProcess {
     val spark = SparkSession.builder().getOrCreate()
     spark.sparkContext.setLogLevel("ERROR")
     val dataPath = "/Users/guoqiong/intelWork/projects/jobs2Career/"
+    val lookupDict = "/Users/guoqiong/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.50d.txt"
+
     val applicationDF = spark.read.parquet(dataPath + "/resume_search/application_job_resume_2016_2017_10.parquet")
       .withColumnRenamed("jobs_description", "description")
       .select("job_id", "description", "resume_url", "resume.resume.normalizedBody", "new_application")
@@ -170,7 +220,19 @@ object DataProcess {
     indexed.write.mode(SaveMode.Overwrite).parquet(output + "/indexed")
     userDict.write.mode(SaveMode.Overwrite).parquet(output + "/userDict")
     itemDict.write.mode(SaveMode.Overwrite).parquet(output + "/itemDict")
-  }
 
+    // joined data write out
+
+    val dict = loadWordVecMap(lookupDict)
+    val br: Broadcast[Map[String, Array[Float]]] = spark.sparkContext.broadcast(dict)
+
+
+    val negativeDF = negativeJoin(indexed, itemDict, userDict, br)
+    negativeDF.write.mode(SaveMode.Overwrite).parquet(output + "/NEG")
+
+    val joinAllDF = crossJoinAll(userDict, itemDict, br, indexed, 100)
+    joinAllDF.write.mode(SaveMode.Overwrite).parquet(output + "/ALL")
+
+  }
 
 }
