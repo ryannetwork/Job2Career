@@ -66,7 +66,7 @@ class DataProcess {
 
   def cleanData(applicationIn: DataFrame) = {
 
-    //TODO choose one of the descriptions for both user and item
+    //TODO choose only one of the descriptions for both user and item
 
     val applicationDF = applicationIn.withColumnRenamed("job_id", "itemId")
       .withColumn("itemDoc", removeHTMLTag(col("description")))
