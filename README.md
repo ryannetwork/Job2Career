@@ -1,9 +1,3 @@
-<div align="center">
-  <img src="https://github.com/bigdl-project/bigdl-project.github.io/blob/master/img/bigdl-logo-bw.jpg"><br>
-</div>
-
---------
-
 # POC: Jobs recommendation on Apache Spark and BigDL
 
 ## What is BigDL?
