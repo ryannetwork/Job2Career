@@ -21,29 +21,31 @@
         <PermGen>1024m</PermGen>
         <MaxPermGen>2048m</MaxPermGen>
         <CodeCacheSize>512m</CodeCacheSize>
-        <BIGDL_VERSION>0.3.0-SNAPSHOT</BIGDL_VERSION>
+        <BIGDL_VERSION>0.4.0</BIGDL_VERSION>
     </properties>
 
     <dependencies>
 
         <dependency>
             <groupId>com.intel.analytics.bigdl</groupId>
-            <artifactId>bigdl-spark-2_0</artifactId>
-            <version>${BIGDL_VERSION}</version>
+            <artifactId>bigdl</artifactId>
+            <scope>compile</scope>
+            <version>0.4.0</version>
         </dependency>
 
-        <dependency>
-            <groupId>com.intel.analytics.bigdl.native</groupId>
-            <artifactId>mkl-java-mac</artifactId>
-            <version>${BIGDL_VERSION}</version>
-            <exclusions>
-                <exclusion>
+        <!--
+                <dependency>
                     <groupId>com.intel.analytics.bigdl.native</groupId>
-                    <artifactId>bigdl-native</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-
+                    <artifactId>mkl-java-mac</artifactId>
+                    <version>${BIGDL_VERSION}</version>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>com.intel.analytics.bigdl.native</groupId>
+                            <artifactId>bigdl-native</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+        -->
         <dependency>
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-core_${scala.binary.version}</artifactId>
@@ -144,7 +146,7 @@
                 </executions>
             </plugin>
 
-            <plugin>
+           <plugin>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.0</version>
                 <configuration>
@@ -152,6 +154,7 @@
                     <target>1.7</target>
                 </configuration>
             </plugin>
+
 
             <plugin>
                 <groupId>net.alchim31.maven</groupId>
@@ -198,15 +201,16 @@
                 </executions>
             </plugin>
 
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-assembly-plugin</artifactId>
-                <configuration>
-                    <descriptors>
-                        <descriptor>src/main/assembly/job.xml</descriptor>
-                    </descriptors>
-                </configuration>
-            </plugin>
+           <plugin>
+                 <groupId>org.apache.maven.plugins</groupId>
+                 <artifactId>maven-assembly-plugin</artifactId>
+                 <configuration>
+                     <descriptors>
+                         <descriptor>src/main/assembly/job.xml</descriptor>
+                     </descriptors>
+                 </configuration>
+           </plugin>
+
 
             <!--
             <plugin>
@@ -215,27 +219,19 @@
                 <version>2.3</version>
                 <configuration>
                     <shadedArtifactAttached>true</shadedArtifactAttached>
-                    <shadedArtifactId>cube</shadedArtifactId>
-                    <outputDirectory>target</outputDirectory>
-                    <finalName>cube</finalName>
-                        <filters>
-                            <filter>
-                                <artifact>*:*</artifact>
-                                <excludes>
-                                    <exclude>META-INF/*.SF</exclude>
-                                    <exclude>META-INF/*.DSA</exclude>
-                                    <exclude>META-INF/*.RSA</exclude>
-                                </excludes>
-                            </filter>
-                        </filters>
-
-                    <dependencySets>
-                        <dependencySet>
+                    <shadedArtifactId>job2career</shadedArtifactId>
+                    <outputDirectory>dist</outputDirectory>
+                    <finalName>job2career-with-dependencies</finalName>
+                    <filters>
+                        <filter>
+                            <artifact>*:*</artifact>
                             <excludes>
-                                <exclude>org.apache.spark:*</exclude>
+                                <exclude>META-INF/*.SF</exclude>
+                                <exclude>META-INF/*.DSA</exclude>
+                                <exclude>META-INF/*.RSA</exclude>
                             </excludes>
-                        </dependencySet>
-                    </dependencySets>
+                        </filter>
+                    </filters>
 
                 </configuration>
 
@@ -248,8 +244,7 @@
                     </execution>
                 </executions>
             </plugin>
-    -->
-
+          -->
         </plugins>
 
         <resources>

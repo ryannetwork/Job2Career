@@ -13,6 +13,10 @@ object DataAnalysis {
 
     Logger.getLogger("org").setLevel(Level.ERROR)
 
+    val conf = Engine.createSparkConf().setAppName("app")
+      .setMaster("local[8]")
+    val sc = new SparkContext(conf)
+
     val spark = SparkSession.builder().getOrCreate()
     spark.sparkContext.setLogLevel("ERROR")
 

@@ -18,9 +18,7 @@ object TrainWithNCF {
   def main(args: Array[String]): Unit = {
 
     Logger.getLogger("org").setLevel(Level.ERROR)
-
-    Logger.getLogger("org").setLevel(Level.ERROR)
-    val conf = Engine.createSparkConf().setAppName("Train")
+    val conf = Engine.createSparkConf().setAppName("app")
       .setMaster("local[8]")
     val sc = new SparkContext(conf)
     val spark = SparkSession.builder().config(conf).getOrCreate()

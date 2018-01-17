@@ -46,7 +46,7 @@ object Utils {
     indexedDF.union(negativeSampleDF)
   }
 
-  def addNegativeSample(amplyfiler: Int, indexedDF: DataFrame) = {
+  def addNegativeSample(amplifier: Int, indexedDF: DataFrame) = {
 
     val row = indexedDF.agg(max("userIdIndex"), max("itemIdIndex")).head
     val (userCount, itemCount) = (row.getAs[Double](0).toInt, row.getAs[Double](1).toInt)
@@ -54,7 +54,7 @@ object Utils {
     println(userCount + "," + itemCount)
     val sampleDict = indexedDF.rdd.map(row => row(0) + "," + row(1)).collect().toSet
 
-    val numberRecords = amplyfiler * indexedDF.count
+    val numberRecords = amplifier * indexedDF.count
 
     import indexedDF.sparkSession.implicits._
 

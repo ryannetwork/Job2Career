@@ -12,10 +12,10 @@ import com.intel.analytics.bigdl.apps.job2Career.DataProcess._
 import com.intel.analytics.bigdl.apps.job2Career.TrainWithD2VGlove.{doc2VecFromWordMap, loadWordVecMap}
 import com.intel.analytics.bigdl.apps.recommendation.Utils.{addNegativeSample, getCosineSim, sizeFilter}
 import org.apache.log4j.{Level, Logger}
+import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.sql.expressions.Window
 
 import scala.util.Random
-
 
 class DataProcess {
 
@@ -127,18 +127,40 @@ object DataProcess {
     val userDict = applicationIndexed.select("userId", "userIdIndex", "userDoc").distinct()
     val itemDict = applicationIndexed.select("itemId", "itemIdIndex", "itemDoc").distinct()
 
+    println("------------------------in indexed ----------------------")
+
+    indexed.groupBy("userIdIndex").count()
+      .withColumnRenamed("count", "applyJobCount")
+      .groupBy("applyJobCount").count()
+      .orderBy("applyJobCount").show(1000, false)
+
     (indexed, userDict, itemDict)
   }
 
   def negativeJoin(indexed: DataFrame, itemDictOrig: DataFrame, userDictOrig: DataFrame, br: Broadcast[Map[String, Array[Float]]]): DataFrame = {
 
+    println("original count of userDict:" + userDictOrig.select("userIdIndex").distinct().count())
     val userDict = doc2VecFromWordMap(userDictOrig, br, "userVec", "userDoc")
       .filter(sizeFilter(col("userVec")))
 
+    userDict.filter(!sizeFilter(col("userVec"))).show(100, false)
+
+    println("filter count of userDict:" + userDict.select("userIdIndex").distinct().count())
+
+
+    println("original count of itemDict:" + itemDictOrig.select("itemIdIndex").distinct().count())
     val itemDict = doc2VecFromWordMap(itemDictOrig, br, "itemVec", "itemDoc")
       .filter(sizeFilter(col("itemVec")))
+    println("original count of itemDict:" + itemDict.select("itemIdIndex").distinct().count())
 
-    val indexedWithNegative = addNegativeSample(5, indexed)
+    val indexedWithNegative = addNegativeSample(50, indexed)
+
+    println("------------------------in negative join after adding negative samples----------------------")
+    indexedWithNegative.filter("label = 1").groupBy("userIdIndex").count()
+      .withColumnRenamed("count", "applyJobCount")
+      .groupBy("applyJobCount").count()
+      .orderBy("applyJobCount").show(1000, false)
+
 
     val joined = indexedWithNegative
       .join(userDict, indexedWithNegative("userIdIndex") === userDict("userIdIndex"))
@@ -148,6 +170,13 @@ object DataProcess {
       .sort(col("cosineSimilarity").desc)
       .withColumnRenamed("cosineSimilarity", "score")
       .select("userIdIndex", "itemIdIndex", "score", "label")
+
+    println("------------------------in negative join afterscore----------------------")
+
+    joined.filter("label = 1").groupBy("userIdIndex").count()
+      .withColumnRenamed("count", "applyJobCount")
+      .groupBy("applyJobCount").count()
+      .orderBy("applyJobCount").show(1000, false)
 
     joined
 
@@ -177,6 +206,11 @@ object DataProcess {
 
     Logger.getLogger("org").setLevel(Level.ERROR)
 
+    val conf = new SparkConf()
+      .setMaster("local[8]")
+      .setAppName("app")
+    val sc = SparkContext.getOrCreate(conf)
+
     val spark = SparkSession.builder().getOrCreate()
     spark.sparkContext.setLogLevel("ERROR")
     val dataPath = "/Users/guoqiong/intelWork/projects/jobs2Career/"
@@ -200,6 +234,7 @@ object DataProcess {
     userDict.cache()
     itemDict.cache()
 
+
     val output = dataPath + "/data/indexed_application_job_resume_2016_2017_10"
 
     indexed.printSchema()
@@ -217,7 +252,7 @@ object DataProcess {
     println("itemDict " + itemDict.count)
     println("itemDict " + itemDict.distinct().count)
 
-    indexed.write.mode(SaveMode.Overwrite).parquet(output + "/indexed")
+    indexed.coalesce(1).write.mode(SaveMode.Overwrite).parquet(output + "/indexed")
     userDict.write.mode(SaveMode.Overwrite).parquet(output + "/userDict")
     itemDict.write.mode(SaveMode.Overwrite).parquet(output + "/itemDict")
 
@@ -228,10 +263,10 @@ object DataProcess {
 
 
     val negativeDF = negativeJoin(indexed, itemDict, userDict, br)
-    negativeDF.write.mode(SaveMode.Overwrite).parquet(output + "/NEG")
+    negativeDF.coalesce(1).write.mode(SaveMode.Overwrite).parquet(output + "/NEG50")
 
-    val joinAllDF = crossJoinAll(userDict, itemDict, br, indexed, 100)
-    joinAllDF.write.mode(SaveMode.Overwrite).parquet(output + "/ALL")
+    //    val joinAllDF = crossJoinAll(userDict, itemDict, br, indexed, 100)
+    //    joinAllDF.write.mode(SaveMode.Overwrite).parquet(output + "/ALL")
 
   }
 
