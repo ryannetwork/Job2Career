@@ -1,7 +1,7 @@
 package com.intel.analytics.bigdl.apps.job2Career
 
 import com.intel.analytics.bigdl.apps.recommendation.Utils._
-import com.intel.analytics.bigdl.apps.recommendation.{Evaluation, ModelUtils, ModelParam}
+import com.intel.analytics.bigdl.apps.recommendation.{Evaluation, ModelParam, ModelUtils}
 import com.intel.analytics.bigdl.nn._
 import com.intel.analytics.bigdl.optim.Adam
 import com.intel.analytics.bigdl.tensor.TensorNumericMath.TensorNumeric.NumericFloat
@@ -9,26 +9,50 @@ import com.intel.analytics.bigdl.utils.Engine
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.SparkContext
 import org.apache.spark.ml.{DLClassifier, DLModel}
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.functions._
-
+import scopt.OptionParser
 
 object TrainWithNCF {
 
   def main(args: Array[String]): Unit = {
 
+    val defaultParams = DataParams()
+
+    val parser = new OptionParser[DataParams]("BigDL Example") {
+      opt[String]("inputDir")
+        .text(s"inputDir")
+        .action((x, c) => c.copy(inputDir = x))
+      opt[String]("outputDir")
+        .text(s"outputDir")
+        .action((x, c) => c.copy(outputDir = x))
+      opt[String]("dictDir")
+        .text(s"wordVec data")
+        .action((x, c) => c.copy(dictDir = x))
+    }
+
+    parser.parse(args, defaultParams).map {
+      params =>
+        run(params)
+    } getOrElse {
+      System.exit(1)
+    }
+  }
+
+  def run(param: DataParams): Unit = {
+
     Logger.getLogger("org").setLevel(Level.ERROR)
     val conf = Engine.createSparkConf().setAppName("app")
-      .setMaster("local[8]")
-    val sc = new SparkContext(conf)
+     // .setMaster("local[8]")
+    // val sc = new SparkContext(conf)
+
     val spark = SparkSession.builder().config(conf).getOrCreate()
-    spark.sparkContext.setLogLevel("ERROR")
+    spark.sparkContext.setLogLevel("WARN")
     Engine.init
 
-    val input = "/Users/guoqiong/intelWork/projects/jobs2Career/data/indexed_application_job_resume_2016_2017_10"
+    val input = param.inputDir
     val indexed = spark.read.parquet(input + "/indexed")
-    val userCount = spark.read.parquet(input + "/userDict").select("userIdIndex").distinct().count().toInt
-    val itemCount = spark.read.parquet(input + "/itemDict").select("itemIdIndex").distinct().count().toInt
+    val Row(userCount:Double,itemCount:Double) = indexed.agg(max("userIdIndex"),max("itemIdIndex")).head()
 
     val dataWithNegative = addNegativeSample(5, indexed)
       .withColumn("userIdIndex", add1(col("userIdIndex")))
@@ -53,7 +77,7 @@ object TrainWithNCF {
     val recModel = new ModelUtils(modelParam)
 
     // val model = recModel.ncf(userCount, itemCount)
-    val model = recModel.mlp(userCount, itemCount)
+    val model = recModel.mlp(userCount.toInt + 1, itemCount.toInt +1)
 
     val criterion = ClassNLLCriterion()
     //val criterion = MSECriterion[Float]()
@@ -71,7 +95,7 @@ object TrainWithNCF {
     println("model weights  " + dlModel.model.getParameters())
     val time2 = System.nanoTime()
 
-    val predictions = dlModel.setBatchSize(1).transform(validationDF)
+    val predictions = dlModel.setBatchSize(10).transform(validationDF)
 
     val time3 = System.nanoTime()
 

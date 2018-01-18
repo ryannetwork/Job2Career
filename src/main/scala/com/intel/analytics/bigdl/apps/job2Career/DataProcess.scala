@@ -252,7 +252,7 @@ object DataProcess {
     println("itemDict " + itemDict.count)
     println("itemDict " + itemDict.distinct().count)
 
-    indexed.coalesce(1).write.mode(SaveMode.Overwrite).parquet(output + "/indexed")
+    indexed.coalesce(16).write.mode(SaveMode.Overwrite).parquet(output + "/indexed")
     userDict.write.mode(SaveMode.Overwrite).parquet(output + "/userDict")
     itemDict.write.mode(SaveMode.Overwrite).parquet(output + "/itemDict")
 
@@ -263,7 +263,7 @@ object DataProcess {
 
 
     val negativeDF = negativeJoin(indexed, itemDict, userDict, br)
-    negativeDF.coalesce(1).write.mode(SaveMode.Overwrite).parquet(output + "/NEG50")
+    negativeDF.coalesce(16).write.mode(SaveMode.Overwrite).parquet(output + "/NEG50")
 
     //    val joinAllDF = crossJoinAll(userDict, itemDict, br, indexed, 100)
     //    joinAllDF.write.mode(SaveMode.Overwrite).parquet(output + "/ALL")

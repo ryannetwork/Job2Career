@@ -17,7 +17,7 @@
             <includes>
                 <!-- TODO: Cleanup  -->
 
-                <include>com.intel.analytics.bigdl:bigdl-spark-2_0</include>
+                <include>com.intel.analytics.bigdl:bigdl-SPARK_2.2</include>
                 <include>com.github.scopt:scopt_2.11</include>
                 <include>org.scala-lang:scala-library</include>
                 <include>org.scalanlp:breeze_2.11</include>
