@@ -58,7 +58,7 @@ object TrainWithD2VGlove {
     val input = param.inputDir
 
     // val joined = DataProcess.negativeJoin(indexed, itemDict, userDict, br)
-    // val joined = DataProcess.crossJoinAll(userDict, itemDict, br, indexed, 100)
+    //val joined = DataProcess.crossJoinAll(userDict, itemDict, br, indexed, 100)
 
     val joined = spark.read.parquet(input + "/NEG50")
     //val joined = spark.read.parquet(input + "/ALL")
@@ -137,7 +137,7 @@ object TrainWithD2VGlove {
 
     })
 
-    dataFrame.withColumn(newCol, createVectorUdf(col(colName)))
+    dataFrame.withColumn(newCol, createVectorUdf(col(colName))).drop(colName)
   }
 
 }
