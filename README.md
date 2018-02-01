@@ -19,12 +19,12 @@
         * spark.speculation false
 4. Step 4, upload data and dependency jar
     * Data-> create table -> upload data, give a name for example ”NEG50”
-    * /FileStore/tables/Jobs2Career/indexed/indexed/
+    * /FileStore/taAbles/Jobs2Career/indexed/indexed/
     * /FileStore/tables/Jobs2Career/indexed/NEG50/
     * /FileStore/tables/Jobs2Career/lib/job2career_1_0_SNAPSHOT_job-0ca74.jar
 5. Step 5 run job
     * Jobs -> Create job -> give a name
-    *  set Jar, Upload jar, give main class “com.intel.analytics.bigdl.apps.job2Career.TrainWithD2VGlove”, give arguments "--inputDir /FileStore/tables/Jobs2Career/indexed/“
+    * set Jar, Upload jar, give main class “com.intel.analytics.bigdl.apps.job2Career.TrainWithD2VGlove”, give arguments "--inputDir /FileStore/tables/Jobs2Career/indexed/“
     * Add dependency lib dbfs:/FileStore/tables/Jobs2Career/lib/job2career_1_0_SNAPSHOT_job-0ca74.jar
     * Edit cluster -> existing cluster, choose the one you created 
     * confirm -> run now -> see results from log
