@@ -154,6 +154,26 @@ object Utils {
 
   }
 
+
+  def getAbsRank(df:DataFrame, K:Int = 30):DataFrame ={
+
+    val w2 = Window.partitionBy("userIdIndex").orderBy(desc("score"))
+    val ranked = df.withColumn("rank", rank.over(w2)).where(col("rank") <= K)
+
+    ranked.registerTempTable("temp")
+
+    val labeled = df.sqlContext.sql("select userIdIndex, avg(rank) from temp where label = 1.0 group by userIdIndex")
+
+    val dict = labeled.select("userIdIndex").rdd.map(row=>row.getDouble(0)).collect().toSet
+
+    val filterUdf = udf((userIdIndex:Double) => !dict.contains(userIdIndex))
+    val noLabel = ranked.filter(filterUdf(col("userIdIndex"))).select("userIdIndex")
+      .distinct().withColumn("avg(rank)",lit(101))
+
+    labeled.union(noLabel)
+
+  }
+
   def getHitRatioNDCG(dfin: DataFrame, K: Int = 30): (Double, Double) = {
 
     val w2 = Window.partitionBy("userIdIndex").orderBy(desc("score"))

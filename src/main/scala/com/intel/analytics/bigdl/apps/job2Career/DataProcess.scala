@@ -236,10 +236,9 @@ object DataProcess {
     println(joined.count())
     println(" __________ total count after join with dicts label = 1__________")
     println(joined.filter("label = 1").count())
+
     joined
-
   }
-
 
   def crossJoinAll(userDict: DataFrame, itemDict: DataFrame,  indexed: DataFrame, K: Int = 50): DataFrame = {
 
@@ -297,13 +296,13 @@ object DataProcess {
     val Row(minUserIdIndex: Double, maxUserIdIndex: Double) = userDict.agg(min("userIdIndex"), max("userIdIndex")).head
     val Row(minItemIdIndex: Double, maxItemIdIndex: Double) = itemDict.agg(min("itemIdIndex"), max("itemIdIndex")).head
 
-    println("indexed application count: " + indexed.count())
-    println("indexed userIdIndex: " + indexed.select("userIdIndex").distinct().count())
-    println("indexed itemIdIndex: " + indexed.select("itemIdIndex").distinct().count())
-    println("userDict: " + userDict.distinct().count)
-    println("userIdIndex min: " + minUserIdIndex + "max: " + maxUserIdIndex)
-    println("itemDict " + itemDict.distinct().count)
-    println("itemIdIndex min: " + minItemIdIndex + "max: " + maxItemIdIndex)
+//    println("indexed application count: " + indexed.count())
+//    println("indexed userIdIndex: " + indexed.select("userIdIndex").distinct().count())
+//    println("indexed itemIdIndex: " + indexed.select("itemIdIndex").distinct().count())
+//    println("userDict: " + userDict.distinct().count)
+//    println("userIdIndex min: " + minUserIdIndex + "max: " + maxUserIdIndex)
+//    println("itemDict " + itemDict.distinct().count)
+//    println("itemIdIndex min: " + minItemIdIndex + "max: " + maxItemIdIndex)
 
     indexed.coalesce(16).write.mode(SaveMode.Overwrite).parquet(output + "/indexed")
     userDict.write.mode(SaveMode.Overwrite).parquet(output + "/userDict")

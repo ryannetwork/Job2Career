@@ -48,8 +48,8 @@ object TrainWithD2VGlove {
     Logger.getLogger("org").setLevel(Level.ERROR)
 
     val conf = new SparkConf()
-    //   .setMaster("local[8]")
-    //  .setAppName("app")
+       .setMaster("local[8]")
+      .setAppName("app")
 
     val sc = SparkContext.getOrCreate(conf)
     val spark = SparkSession.builder().getOrCreate()
@@ -60,8 +60,9 @@ object TrainWithD2VGlove {
     // val joined = DataProcess.negativeJoin(indexed, itemDict, userDict, br)
     //val joined = DataProcess.crossJoinAll(userDict, itemDict, br, indexed, 100)
 
-    val joined = spark.read.parquet(input + "/NEG50")
-    //val joined = spark.read.parquet(input + "/ALL")
+    //val joined = spark.read.parquet(input + "/NEG50")
+
+    val joined = spark.read.parquet(input + "/ALL")
 
     joined.filter("label = 1").groupBy("userIdIndex").count()
       .withColumnRenamed("count", "applyJobCount")
@@ -83,6 +84,15 @@ object TrainWithD2VGlove {
     val buckets = bucketize(joined).orderBy(col("bucket").desc)
     buckets.show(100)
 
+    joined.printSchema()
+    val rankDF = getAbsRank(joined,100)
+    println("-------------abs rank dist----------------------------")
+
+    val roundUDF = udf((v:Double)=> v.toInt)
+    rankDF.withColumn("roundRank",roundUDF(col("avg(rank)"))).groupBy("roundRank")
+      .count().orderBy(col("roundRank")).show(1000,false)
+
+    rankDF.show()
     Seq(3, 5, 10, 15, 20, 30).map(x => {
 
       val (ratio, ndcg) = getHitRatioNDCG(joined, x)
@@ -94,7 +104,8 @@ object TrainWithD2VGlove {
 
   val gloveDir = s"/glove.6B/"
 
-  val stopWordSet = Set("is", "the", "are", "we")
+  val stopWordString ="a,about,above,after,again,against,all,am,an,and,any,are,as,at,be,because,been,before,being,below,between,both,but,by,could,did,do,does,doing,down,during,each,few,for,from,further,had,has,have,having,he,he’d,he’ll,he’s,her,here,here’s,hers,herself,him,himself,his,how,how’s,I,I’d,I’ll,I’m,I’ve,if,in,into,is,it,it’s,its,itself,let’s,me,more,most,my,myself,nor,of,on,once,only,or,other,ought,our,ours,ourselves,out,over,own,same,she,she’d,she’ll,she’s,should,so,some,such,than,that,that’s,the,their,theirs,them,themselves,then,there,there’s,these,they,they’d,they’ll,they’re,they’ve,this,those,through,to,too,under,until,up,very,was,we,we’d,we’ll,we’re,we’ve,were,what,what’s,when,when’s,where,where’s,which,while,who,who’s,whom,why,why’s,with,would,you,you’d,you’ll,you’re,you’ve,your,yours,yourself,yourselves"
+  val stopWordSet = stopWordString.split(",")
 
   def loadWordVecMap(filename: String): Map[String, Array[Float]] = {
     val wordMap = for (line <- Source.fromFile(filename, "ISO-8859-1").getLines) yield {
@@ -103,7 +114,7 @@ object TrainWithD2VGlove {
       val coefs: Array[Float] = values.slice(1, values.length).map(_.toFloat)
       (word, coefs)
     }
-    wordMap.toMap
+    wordMap.filter(x=> !stopWordSet.contains(x._1)).toMap
   }
 
   def doc2VecFromWordMap(dataFrame: DataFrame, brMap: Broadcast[Map[String, Array[Float]]], newCol: String, colName: String) = {
