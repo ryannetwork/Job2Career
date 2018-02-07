@@ -9,13 +9,19 @@ import org.apache.spark.sql._
 import scala.collection.{immutable, mutable}
 import scala.io.Source
 import com.intel.analytics.bigdl.apps.job2Career.DataProcess._
-import com.intel.analytics.bigdl.apps.job2Career.TrainWithD2VGlove.{doc2VecFromWordMap, loadWordVecMap}
+import com.intel.analytics.bigdl.apps.job2Career.TrainWithD2VGlove.{doc2VecFromWordMap, loadWordVecMap, run}
 import com.intel.analytics.bigdl.apps.recommendation.Utils.{addNegativeSample, getCosineSim, sizeFilter}
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.sql.expressions.Window
+import scopt.OptionParser
 
 import scala.util.Random
+
+case class DataProcessParams(val inputDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/",
+                      val outputDir: String = "add it if you need it",
+                      val dictDir: String = "/Users/guoqiong/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.50d.txt")
+
 
 class DataProcess {
 
@@ -255,6 +261,31 @@ object DataProcess {
 
   def main(args: Array[String]): Unit = {
 
+    val defaultParams = DataProcessParams()
+
+    val parser = new OptionParser[DataProcessParams]("BigDL Example") {
+      opt[String]("inputDir")
+        .text(s"inputDir")
+        .action((x, c) => c.copy(inputDir = x))
+      opt[String]("outputDir")
+        .text(s"outputDir")
+        .action((x, c) => c.copy(outputDir = x))
+      opt[String]("dictDir")
+        .text(s"wordVec data")
+        .action((x, c) => c.copy(dictDir = x))
+    }
+
+    parser.parse(args, defaultParams).map {
+      params =>
+        run(params)
+    } getOrElse {
+      System.exit(1)
+    }
+
+  }
+
+  def run(para:DataProcessParams): Unit ={
+
     Logger.getLogger("org").setLevel(Level.ERROR)
 
     val conf = new SparkConf()
@@ -264,8 +295,8 @@ object DataProcess {
 
     val spark = SparkSession.builder().getOrCreate()
     spark.sparkContext.setLogLevel("ERROR")
-    val dataPath = "/Users/guoqiong/intelWork/projects/jobs2Career/"
-    val lookupDict = "/Users/guoqiong/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.50d.txt"
+    val dataPath = para.inputDir
+    val lookupDict = para.dictDir
 
     val applicationDF = spark.read.parquet(dataPath + "/resume_search/application_job_resume_2016_2017_10.parquet")
       .withColumnRenamed("jobs_description", "description")
@@ -296,13 +327,13 @@ object DataProcess {
     val Row(minUserIdIndex: Double, maxUserIdIndex: Double) = userDict.agg(min("userIdIndex"), max("userIdIndex")).head
     val Row(minItemIdIndex: Double, maxItemIdIndex: Double) = itemDict.agg(min("itemIdIndex"), max("itemIdIndex")).head
 
-//    println("indexed application count: " + indexed.count())
-//    println("indexed userIdIndex: " + indexed.select("userIdIndex").distinct().count())
-//    println("indexed itemIdIndex: " + indexed.select("itemIdIndex").distinct().count())
-//    println("userDict: " + userDict.distinct().count)
-//    println("userIdIndex min: " + minUserIdIndex + "max: " + maxUserIdIndex)
-//    println("itemDict " + itemDict.distinct().count)
-//    println("itemIdIndex min: " + minItemIdIndex + "max: " + maxItemIdIndex)
+    //    println("indexed application count: " + indexed.count())
+    //    println("indexed userIdIndex: " + indexed.select("userIdIndex").distinct().count())
+    //    println("indexed itemIdIndex: " + indexed.select("itemIdIndex").distinct().count())
+    //    println("userDict: " + userDict.distinct().count)
+    //    println("userIdIndex min: " + minUserIdIndex + "max: " + maxUserIdIndex)
+    //    println("itemDict " + itemDict.distinct().count)
+    //    println("itemIdIndex min: " + minItemIdIndex + "max: " + maxItemIdIndex)
 
     indexed.coalesce(16).write.mode(SaveMode.Overwrite).parquet(output + "/indexed")
     userDict.write.mode(SaveMode.Overwrite).parquet(output + "/userDict")
@@ -312,7 +343,7 @@ object DataProcess {
 
     //val negativeDF = negativeJoin(indexed, itemDict, userDict)
 
-   // println("after negative join " + negativeDF.count())
+    // println("after negative join " + negativeDF.count())
     //negativeDF.coalesce(16).write.mode(SaveMode.Overwrite).parquet(output + "/NEG50")
 
     val joinAllDF = crossJoinAll(userDict, itemDict, indexed, 1000)
