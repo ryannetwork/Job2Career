@@ -19,7 +19,8 @@ import scopt.OptionParser
 import scala.util.Random
 
 case class DataProcessParams(val inputDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/",
-                      val outputDir: String = "add it if you need it",
+                             val outputDir: String = "add it if you need it",
+                             val topK:Int = 50,
                       val dictDir: String = "/Users/guoqiong/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.50d.txt")
 
 
@@ -270,6 +271,9 @@ object DataProcess {
       opt[String]("outputDir")
         .text(s"outputDir")
         .action((x, c) => c.copy(outputDir = x))
+      opt[String]("topK")
+        .text(s"topK")
+        .action((x, c) => c.copy(topK = x.toInt))
       opt[String]("dictDir")
         .text(s"wordVec data")
         .action((x, c) => c.copy(dictDir = x))
@@ -341,14 +345,15 @@ object DataProcess {
 
     // joined data write out
 
-    //val negativeDF = negativeJoin(indexed, itemDict, userDict)
+//    val negativeDF = negativeJoin(indexed, itemDict, userDict)
+//
+//    // println("after negative join " + negativeDF.count())
+//    negativeDF.coalesce(16).write.mode(SaveMode.Overwrite).parquet(output + "/NEG50")
 
-    // println("after negative join " + negativeDF.count())
-    //negativeDF.coalesce(16).write.mode(SaveMode.Overwrite).parquet(output + "/NEG50")
-
-    val joinAllDF = crossJoinAll(userDict, itemDict, indexed, 1000)
+    val joinAllDF = crossJoinAll(userDict, itemDict, indexed, para.topK)
     joinAllDF.write.mode(SaveMode.Overwrite).parquet(output + "/ALL")
 
+    println("done")
   }
 
 }
