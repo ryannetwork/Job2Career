@@ -258,7 +258,7 @@ object DataProcess {
 
     outAll.persist(StorageLevel.DISK_ONLY)
     val w1 = Window.partitionBy("userIdIndex").orderBy(desc("score"))
-    val rankDF = outAll.withColumn("rank", rank.over(w1)).where(col("rank") <= K).drop("rank")
+    val rankDF = outAll.withColumn("rank", rank.over(w1)).where(col("rank") <= K)
 
     rankDF.join(indexed, Seq("userIdIndex", "itemIdIndex"), "leftouter")
   }

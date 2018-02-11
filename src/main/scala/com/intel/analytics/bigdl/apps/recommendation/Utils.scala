@@ -167,10 +167,14 @@ object Utils {
   }
 
 
-  def getAbsRank(df:DataFrame, K:Int = 30):DataFrame ={
+  def getAbsRank(df:DataFrame, K:Int = 30):DataFrame = {
 
+    val ranked = if (!df.columns.contains("rank")) {
     val w2 = Window.partitionBy("userIdIndex").orderBy(desc("score"))
-    val ranked = df.withColumn("rank", rank.over(w2)).where(col("rank") <= K)
+    df.withColumn("rank", rank.over(w2)).where(col("rank") <= K)
+    } else {
+      df
+    }
 
     ranked.registerTempTable("temp")
 
