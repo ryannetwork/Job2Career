@@ -96,6 +96,18 @@ object Utils {
     }.toDF().orderBy(rand()).cache()
   }
 
+  val df2LP2:(DataFrame) => DataFrame = df =>{
+    import df.sparkSession.implicits._
+    df.select("userVec", "itemVec", "label").rdd.map { r =>
+      val vec = r.getSeq[Float](0) ++ r.getSeq[Float](1)
+      val vect = vec.map(_.toDouble)
+      val f = Vectors.dense(vect.toArray)
+      // require(f.toArray.take(1).forall(_ >= 0))
+      val l = r.getDouble(2)
+      LabeledPoint(l, f)
+    }.toDF().orderBy(rand()).cache()
+  }
+
   val toZero = udf { d: Double =>
     if (d > 1) 1.0 else 0.0
   }

@@ -232,7 +232,7 @@ object DataProcess {
       .withColumn("cosineSimilarity", getCosineSim(col("userVec"), col("itemVec")))
       .sort(col("cosineSimilarity").desc)
       .withColumnRenamed("cosineSimilarity", "score")
-      .select("userIdIndex", "itemIdIndex", "score", "label")
+    //  .select("userIdIndex", "itemIdIndex", "score", "label")
 
     println("------------------------in negative join afterscore----------------------")
 

@@ -32,6 +32,9 @@ object TrainWithD2VGlove {
       opt[String]("outputDir")
         .text(s"outputDir")
         .action((x, c) => c.copy(outputDir = x))
+      opt[String]("topK")
+        .text(s"topK")
+        .action((x, c) => c.copy(topK = x.toInt))
       opt[String]("dictDir")
         .text(s"wordVec data")
         .action((x, c) => c.copy(dictDir = x))
@@ -88,7 +91,6 @@ object TrainWithD2VGlove {
     joined.printSchema()
     val rankDF = getAbsRank(joined,param.topK)
     println("-------------abs rank dist----------------------------")
-
     val roundUDF = udf((v:Double)=> v.toInt)
     rankDF.withColumn("roundRank",roundUDF(col("avg(rank)"))).groupBy("roundRank")
       .count().orderBy(col("roundRank")).show(1000,false)
