@@ -22,6 +22,7 @@ import scala.util.Random
 case class DataProcessParams(val inputDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/",
                              val outputDir: String = "add it if you need it",
                              val topK:Int = 500,
+                             val negativeK:Int = 50,
                       val dictDir: String = "/Users/guoqiong/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.50d.txt")
 
 
@@ -209,9 +210,9 @@ object DataProcess {
 
   }
 
-  def negativeJoin(indexed: DataFrame, itemDict: DataFrame, userDict: DataFrame): DataFrame = {
+  def negativeJoin(indexed: DataFrame, itemDict: DataFrame, userDict: DataFrame,negativeK:Int=50): DataFrame = {
 
-    val indexedWithNegative = addNegativeSample(50, indexed)
+    val indexedWithNegative = addNegativeSample(negativeK, indexed)
 
     println("------------------------in negative join after adding negative samples----------------------")
     indexedWithNegative.filter("label = 1").groupBy("userIdIndex").count()
@@ -276,6 +277,9 @@ object DataProcess {
       opt[String]("topK")
         .text(s"topK")
         .action((x, c) => c.copy(topK = x.toInt))
+      opt[String]("negativeK")
+        .text(s"negativeK")
+        .action((x, c) => c.copy(negativeK = x.toInt))
       opt[String]("dictDir")
         .text(s"wordVec data")
         .action((x, c) => c.copy(dictDir = x))
@@ -297,10 +301,12 @@ object DataProcess {
     val conf = new SparkConf()
       .setMaster("local[8]")
       .setAppName("app")
+
     val sc = SparkContext.getOrCreate(conf)
 
     val spark = SparkSession.builder().getOrCreate()
     spark.sparkContext.setLogLevel("ERROR")
+    spark.sqlContext.setConf("spark.sql.shuffle.partitions","1000")
     val dataPath = para.inputDir
     val lookupDict = para.dictDir
 
@@ -347,10 +353,10 @@ object DataProcess {
 
     // joined data write out
 
-//    val negativeDF = negativeJoin(indexed, itemDict, userDict)
-//
-//    // println("after negative join " + negativeDF.count())
-//    negativeDF.coalesce(16).write.mode(SaveMode.Overwrite).parquet(output + "/NEG50")
+    val negativeDF = negativeJoin(indexed, itemDict, userDict,para.negativeK)
+
+    // println("after negative join " + negativeDF.count())
+    negativeDF.coalesce(16).write.mode(SaveMode.Overwrite).parquet(output + "/NEG" + para.negativeK)
 
     val joinAllDF = crossJoinAll(userDict, itemDict, indexed, para.topK)
     joinAllDF.write.mode(SaveMode.Overwrite).parquet(output + "/ALL")

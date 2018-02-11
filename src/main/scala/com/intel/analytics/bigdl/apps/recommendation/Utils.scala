@@ -168,7 +168,7 @@ object Utils {
 
     val filterUdf = udf((userIdIndex:Double) => !dict.contains(userIdIndex))
     val noLabel = ranked.filter(filterUdf(col("userIdIndex"))).select("userIdIndex")
-      .distinct().withColumn("avg(rank)",lit(101))
+      .distinct().withColumn("avg(rank)",lit(K+1))
 
     labeled.union(noLabel)
 

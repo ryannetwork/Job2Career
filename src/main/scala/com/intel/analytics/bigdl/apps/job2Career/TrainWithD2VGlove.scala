@@ -16,6 +16,7 @@ import scala.io.Source
 
 case class DataParams(val inputDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/data/indexed_application_job_resume_2016_2017_10",
                       val outputDir: String = "add it if you need it",
+                      val topK:Int = 500,
                       val dictDir: String = "add it if you need it")
 
 object TrainWithD2VGlove {
@@ -85,7 +86,7 @@ object TrainWithD2VGlove {
     buckets.show(100)
 
     joined.printSchema()
-    val rankDF = getAbsRank(joined,100)
+    val rankDF = getAbsRank(joined,param.topK)
     println("-------------abs rank dist----------------------------")
 
     val roundUDF = udf((v:Double)=> v.toInt)
@@ -105,7 +106,7 @@ object TrainWithD2VGlove {
   val gloveDir = s"/glove.6B/"
 
   val stopWordString ="a,about,above,after,again,against,all,am,an,and,any,are,as,at,be,because,been,before,being,below,between,both,but,by,could,did,do,does,doing,down,during,each,few,for,from,further,had,has,have,having,he,he’d,he’ll,he’s,her,here,here’s,hers,herself,him,himself,his,how,how’s,I,I’d,I’ll,I’m,I’ve,if,in,into,is,it,it’s,its,itself,let’s,me,more,most,my,myself,nor,of,on,once,only,or,other,ought,our,ours,ourselves,out,over,own,same,she,she’d,she’ll,she’s,should,so,some,such,than,that,that’s,the,their,theirs,them,themselves,then,there,there’s,these,they,they’d,they’ll,they’re,they’ve,this,those,through,to,too,under,until,up,very,was,we,we’d,we’ll,we’re,we’ve,were,what,what’s,when,when’s,where,where’s,which,while,who,who’s,whom,why,why’s,with,would,you,you’d,you’ll,you’re,you’ve,your,yours,yourself,yourselves"
-  val stopWordSet = stopWordString.split(",")
+  val stopWordSet = stopWordString.split(",") ++ Set(",",".")
 
   def loadWordVecMap(filename: String): Map[String, Array[Float]] = {
     val wordMap = for (line <- Source.fromFile(filename, "ISO-8859-1").getLines) yield {
