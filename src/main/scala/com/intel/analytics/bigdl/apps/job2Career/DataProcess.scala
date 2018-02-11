@@ -14,13 +14,14 @@ import com.intel.analytics.bigdl.apps.recommendation.Utils.{addNegativeSample, g
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.sql.expressions.Window
+import org.apache.spark.storage.StorageLevel
 import scopt.OptionParser
 
 import scala.util.Random
 
 case class DataProcessParams(val inputDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/",
                              val outputDir: String = "add it if you need it",
-                             val topK:Int = 50,
+                             val topK:Int = 500,
                       val dictDir: String = "/Users/guoqiong/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.50d.txt")
 
 
@@ -254,6 +255,7 @@ object DataProcess {
       .withColumn("score", getCosineSim(col("userVec"), col("itemVec")))
       .drop("itemVec", "userVec")
 
+    outAll.persist(StorageLevel.DISK_ONLY)
     val w1 = Window.partitionBy("userIdIndex").orderBy(desc("score"))
     val rankDF = outAll.withColumn("rank", rank.over(w1)).where(col("rank") <= K).drop("rank")
 
