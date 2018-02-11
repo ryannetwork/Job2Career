@@ -82,12 +82,6 @@ object TrainWithD2VGlove {
 
     joined.show(5)
 
-    val precisionRecall = getPrecisionRecall(joined)
-    precisionRecall.foreach(x => println(x._1 + "," + x._2 + "," + x._3))
-
-    val buckets = bucketize(joined).orderBy(col("bucket").desc)
-    buckets.show(100)
-
     joined.printSchema()
     val rankDF = getAbsRank(joined,param.topK)
     println("-------------abs rank dist----------------------------")
@@ -95,13 +89,21 @@ object TrainWithD2VGlove {
     rankDF.withColumn("roundRank",roundUDF(col("avg(rank)"))).groupBy("roundRank")
       .count().orderBy(col("roundRank")).show(1000,false)
 
-    rankDF.show()
-    Seq(3, 5, 10, 15, 20, 30).map(x => {
-
-      val (ratio, ndcg) = getHitRatioNDCG(joined, x)
-      x + "," + ratio + "," + ndcg
-
-    }).foreach(println)
+//    rankDF.show()
+//
+//    val precisionRecall = getPrecisionRecall(joined)
+//    precisionRecall.foreach(x => println(x._1 + "," + x._2 + "," + x._3))
+//
+//    val buckets = bucketize(joined).orderBy(col("bucket").desc)
+//    buckets.show(100)
+//
+//
+//    Seq(3, 5, 10, 15, 20, 30).map(x => {
+//
+//      val (ratio, ndcg) = getHitRatioNDCG(joined, x)
+//      x + "," + ratio + "," + ndcg
+//
+//    }).foreach(println)
 
   }
 
