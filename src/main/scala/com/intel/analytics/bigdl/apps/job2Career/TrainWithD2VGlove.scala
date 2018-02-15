@@ -83,11 +83,8 @@ object TrainWithD2VGlove {
     joined.show(5)
 
     joined.printSchema()
-    val rankDF = getAbsRank(joined,param.topK)
     println("-------------abs rank dist----------------------------")
-    val roundUDF = udf((v:Double)=> v.toInt)
-    rankDF.withColumn("roundRank",roundUDF(col("avg(rank)"))).groupBy("roundRank")
-      .count().orderBy(col("roundRank")).show(1000,false)
+    getAbsRank(joined,param.topK).show(1000,false)
 
 //    rankDF.show()
 //
