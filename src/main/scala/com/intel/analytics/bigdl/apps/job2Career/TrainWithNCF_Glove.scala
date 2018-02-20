@@ -9,11 +9,11 @@ import com.intel.analytics.bigdl.utils.Engine
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.SparkContext
 import org.apache.spark.ml.{DLClassifier, DLModel}
-import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.{Row, SparkSession}
 import scopt.OptionParser
 
-object TrainWithNCF {
+object TrainWithNCF_Glove {
 
   def main(args: Array[String]): Unit = {
 
@@ -43,8 +43,8 @@ object TrainWithNCF {
 
     Logger.getLogger("org").setLevel(Level.ERROR)
     val conf = Engine.createSparkConf().setAppName("app")
-     // .setMaster("local[8]")
-    // val sc = new SparkContext(conf)
+      .setMaster("local[8]")
+    val sc = new SparkContext(conf)
 
     val spark = SparkSession.builder().config(conf).getOrCreate()
     spark.sparkContext.setLogLevel("WARN")
@@ -52,21 +52,22 @@ object TrainWithNCF {
 
     val input = param.inputDir
     val indexed = spark.read.parquet(input + "/indexed")
-    val Row(userCount:Double,itemCount:Double) = indexed.agg(max("userIdIndex"),max("itemIdIndex")).head()
+    val userDict = spark.read.parquet(input + "/userDict")
+    val itemDict = spark.read.parquet(input + "/itemDict")
 
-    val dataWithNegative = addNegativeSample(5, indexed)
-      .withColumn("userIdIndex", add1(col("userIdIndex")))
-      .withColumn("itemIdIndex", add1(col("itemIdIndex")))
+    val dataWithNegative = DataProcess.negativeJoin(indexed, itemDict, userDict, negativeK = 5)
       .withColumn("label", add1(col("label")))
+      .select("userVec", "itemVec", "label")
 
-    val dataInLP = df2LP(dataWithNegative)
+    dataWithNegative.show(10, false)
+    val dataInLP = df2LP2(dataWithNegative)
 
     val Array(trainingDF, validationDF) = dataInLP.randomSplit(Array(0.8, 0.2), seed = 1L)
 
     trainingDF.cache()
     validationDF.cache()
 
-    trainingDF.show(3)
+    trainingDF.show(3, false)
 
     val time1 = System.nanoTime()
     val modelParam = ModelParam(userEmbed = 20,
@@ -77,12 +78,12 @@ object TrainWithNCF {
     val recModel = new ModelUtils(modelParam)
 
     // val model = recModel.ncf(userCount, itemCount)
-    val model = recModel.mlp(userCount.toInt + 1, itemCount.toInt +1)
+    val model = recModel.mlp2
 
     val criterion = ClassNLLCriterion()
-    //val criterion = MSECriterion[Float]()
+    // val criterion = MSECriterion[Float]()
 
-    val dlc = new DLClassifier(model, criterion, Array(2))
+    val dlc = new DLClassifier(model, criterion, Array(100))
       .setBatchSize(1000)
       .setOptimMethod(new Adam())
       .setLearningRate(1e-2)

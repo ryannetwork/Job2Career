@@ -38,7 +38,7 @@ class ModelUtils(modelParam: ModelParam) {
     userTable.setWeightsBias(Array(Tensor[Float](userCount, modelParam.userEmbed).randn(0, 0.1)))
     itemTable.setWeightsBias(Array(Tensor[Float](itemCount, modelParam.itemEmbed).randn(0, 0.1)))
 
-    val userTableInput = userTable.inputs(select1)
+    val userTableInput: ModuleNode[Float] = userTable.inputs(select1)
     val itemTableInput = itemTable.inputs(select2)
 
     val embeddedLayer = JoinTable(2, 0).inputs(userTableInput, itemTableInput)
@@ -54,6 +54,40 @@ class ModelUtils(modelParam: ModelParam) {
     val output = if (modelParam.labels >= 2) LogSoftMax().inputs(last) else Sigmoid().inputs(last)
 
     Graph(input, output)
+  }
+
+
+  def mlp2 = {
+
+    println(modelParam)
+
+    val input = Identity().inputs()
+
+    // val linear1: ModuleNode[Float] = Linear(modelParam.itemEmbed + modelParam.userEmbed,
+    val linear1: ModuleNode[Float] = Linear(100,
+      40).inputs(input)
+
+    val relu1 = ReLU().inputs(linear1)
+    val linear2 = Linear(40, 20).inputs(relu1)
+
+//
+//    val relu2 = ReLU().inputs(linear2)
+//    val linear3 = Linear(20, 10).inputs(relu2)
+
+    val reluLast = ReLU().inputs(linear1)
+    val last: ModuleNode[Float] = Linear(40, 2).inputs(reluLast)
+
+    val output = if (modelParam.labels >= 2) LogSoftMax().inputs(last) else Sigmoid().inputs(last)
+
+    Graph(input, output)
+  }
+
+  def mlp3 = {
+    val model = Sequential()
+    model.add(Linear(100, 2))
+    model.add(ReLU())
+    model.add(LogSoftMax())
+    model
   }
 
   private def buildMlpModuleNode(linear: ModuleNode[Float], midLayerIndex: Int, midLayers: Array[Int]): ModuleNode[Float] = {

@@ -3,7 +3,7 @@ package com.intel.analytics.bigdl.apps.recommendation
 import com.intel.analytics.bigdl.dataset.Sample
 import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.utils.T
-import org.apache.spark.ml.Pipeline
+import org.apache.spark.ml.{Pipeline, linalg}
 import org.apache.spark.ml.feature.{LabeledPoint, StringIndexer}
 import org.apache.spark.ml.linalg.Vectors
 import org.apache.spark.rdd.RDD
@@ -89,8 +89,20 @@ object Utils {
   val df2LP: (DataFrame) => DataFrame = df => {
     import df.sparkSession.implicits._
     df.select("userIdIndex", "itemIdIndex", "label").rdd.map { r =>
-      val f = Vectors.dense(r.getDouble(0), r.getDouble(1))
+      val f: linalg.Vector = Vectors.dense(r.getDouble(0), r.getDouble(1))
       require(f.toArray.take(2).forall(_ >= 0))
+      val l = r.getDouble(2)
+      LabeledPoint(l, f)
+    }.toDF().orderBy(rand()).cache()
+  }
+
+  val df2LP2: (DataFrame) => DataFrame = df => {
+    import df.sparkSession.implicits._
+    df.select("userVec", "itemVec", "label").rdd.map { r =>
+      val vec = r.getSeq[Float](0) ++ r.getSeq[Float](1)
+      val vect: Seq[Double] = vec.map(_.toDouble)
+      val f: linalg.Vector = Vectors.dense(vect.toArray)
+      require(f.toArray.size == 100)
       val l = r.getDouble(2)
       LabeledPoint(l, f)
     }.toDF().orderBy(rand()).cache()
@@ -153,6 +165,34 @@ object Utils {
       }).reduceByKey(_ + _).collect().map(x => (x._1.toFloat, x._2.toFloat)).toMap
 
   }
+
+
+  def getAbsRank(df: DataFrame, K: Int = 30): DataFrame = {
+
+    val ranked = if (!df.columns.contains("rank")) {
+      val w2 = Window.partitionBy("userIdIndex").orderBy(desc("score"))
+      df.withColumn("rank", rank.over(w2)).where(col("rank") <= K)
+    } else {
+      df.where(col("rank") <= K)
+    }
+
+    ranked.registerTempTable("temp")
+
+    val labeled = df.sqlContext.sql("select userIdIndex, avg(rank) from temp where label = 1.0 group by userIdIndex")
+
+    val dict = labeled.select("userIdIndex").rdd.map(row => row.getDouble(0)).collect().toSet
+
+    val filterUdf = udf((userIdIndex: Double) => !dict.contains(userIdIndex))
+    val noLabel = ranked.filter(filterUdf(col("userIdIndex"))).select("userIdIndex")
+      .distinct().withColumn("avg(rank)", lit(K + 1))
+
+    val rankDF = labeled.union(noLabel)
+
+    val roundUDF = udf((v: Double) => v.toInt)
+    rankDF.withColumn("roundRank", roundUDF(col("avg(rank)"))).groupBy("roundRank")
+      .count().orderBy(col("roundRank"))
+  }
+
 
   def getHitRatioNDCG(dfin: DataFrame, K: Int = 30): (Double, Double) = {
 
