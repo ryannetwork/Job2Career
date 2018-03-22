@@ -17,7 +17,7 @@ import scala.io.Source
 case class DataParams(val inputDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/data/indexed_application_job_resume_2016_2017_10",
                       val outputDir: String = "add it if you need it",
                       val topK:Int = 500,
-                      val dictDir: String = "add it if you need it")
+                      val dictDir: String = "/Users/guoqiong/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.50d.txt")
 
 object TrainWithD2VGlove {
 

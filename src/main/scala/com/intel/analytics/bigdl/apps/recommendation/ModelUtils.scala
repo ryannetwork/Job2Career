@@ -70,12 +70,11 @@ class ModelUtils(modelParam: ModelParam) {
     val relu1 = ReLU().inputs(linear1)
     val linear2 = Linear(40, 20).inputs(relu1)
 
-//
-//    val relu2 = ReLU().inputs(linear2)
-//    val linear3 = Linear(20, 10).inputs(relu2)
+    val relu2 = ReLU().inputs(linear2)
+    val linear3 = Linear(20, 10).inputs(relu2)
 
-    val reluLast = ReLU().inputs(linear1)
-    val last: ModuleNode[Float] = Linear(40, 2).inputs(reluLast)
+    val reluLast = ReLU().inputs(linear3)
+    val last: ModuleNode[Float] = Linear(10, 2).inputs(reluLast)
 
     val output = if (modelParam.labels >= 2) LogSoftMax().inputs(last) else Sigmoid().inputs(last)
 

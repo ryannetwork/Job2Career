@@ -43,7 +43,7 @@ object TrainWithNCF {
 
     Logger.getLogger("org").setLevel(Level.ERROR)
     val conf = Engine.createSparkConf().setAppName("app")
-     // .setMaster("local[8]")
+    // .setMaster("local[8]")
     // val sc = new SparkContext(conf)
 
     val spark = SparkSession.builder().config(conf).getOrCreate()
@@ -52,9 +52,9 @@ object TrainWithNCF {
 
     val input = param.inputDir
     val indexed = spark.read.parquet(input + "/indexed")
-    val Row(userCount:Double,itemCount:Double) = indexed.agg(max("userIdIndex"),max("itemIdIndex")).head()
+    val Row(userCount: Double, itemCount: Double) = indexed.agg(max("userIdIndex"), max("itemIdIndex")).head()
 
-    val dataWithNegative = addNegativeSample(5, indexed)
+    val dataWithNegative = getNegativeSamples(5, indexed).union(indexed)
       .withColumn("userIdIndex", add1(col("userIdIndex")))
       .withColumn("itemIdIndex", add1(col("itemIdIndex")))
       .withColumn("label", add1(col("label")))
@@ -77,7 +77,7 @@ object TrainWithNCF {
     val recModel = new ModelUtils(modelParam)
 
     // val model = recModel.ncf(userCount, itemCount)
-    val model = recModel.mlp(userCount.toInt + 1, itemCount.toInt +1)
+    val model = recModel.mlp(userCount.toInt + 1, itemCount.toInt + 1)
 
     val criterion = ClassNLLCriterion()
     //val criterion = MSECriterion[Float]()

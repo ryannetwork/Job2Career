@@ -18,6 +18,7 @@ object Utils {
 
   val add1 = udf((num: Double) => num + 1)
 
+  val sizeofArray = udf((feature: mutable.WrappedArray[Double]) => feature.length)
 
   def addNegativeSample1(indexedDF: DataFrame) = {
 
@@ -46,8 +47,9 @@ object Utils {
     indexedDF.union(negativeSampleDF)
   }
 
-  def addNegativeSample(amplifier: Int, indexedDF: DataFrame) = {
+  def getNegativeSamples(amplifier: Int, trainDF: DataFrame) = {
 
+    val indexedDF = trainDF.select("userIdIndex", "itemIdIndex", "label")
     val row = indexedDF.agg(max("userIdIndex"), max("itemIdIndex")).head
     val (userCount, itemCount) = (row.getAs[Double](0).toInt, row.getAs[Double](1).toInt)
 
@@ -70,7 +72,7 @@ object Utils {
       .map(x => (x._1, x._2, 0.0))
       .toDF("userIdIndex", "itemIdIndex", "label")
 
-    indexedDF.union(negativeSampleDF)
+    negativeSampleDF
   }
 
   def df2rddOfSample(indexed: DataFrame): RDD[Sample[Float]] = {
@@ -106,6 +108,22 @@ object Utils {
       val l = r.getDouble(2)
       LabeledPoint(l, f)
     }.toDF().orderBy(rand()).cache()
+  }
+
+
+  def getFeaturesLP(trainDF: DataFrame): DataFrame = {
+
+    val featurizerUdf = udf((userVec: mutable.WrappedArray[Float],
+                             itemVec: mutable.WrappedArray[Float]) => {
+
+      val vec = userVec ++ itemVec
+      val vect: Seq[Double] = vec.map(_.toDouble)
+      val f: linalg.Vector = Vectors.dense(vect.toArray)
+      require(f.toArray.size == 100)
+      f.toArray
+    })
+
+    trainDF.withColumn("features", featurizerUdf(col("userVec"), col("itemVec")))
   }
 
   val toZero = udf { d: Double =>

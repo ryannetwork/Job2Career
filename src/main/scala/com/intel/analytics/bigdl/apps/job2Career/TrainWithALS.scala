@@ -32,7 +32,8 @@ object TrainWithALS {
 
     val model = als.fit(training)
 
-    val testWithNegative = addNegativeSample(5,test)
+    val testWithNegative = getNegativeSamples(5, test).union(test)
+
 
     val predictions = model.transform(testWithNegative)
       .withColumn("prediction", toDoubleUdf(col("prediction")))
