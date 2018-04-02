@@ -83,7 +83,13 @@ class ModelUtils(modelParam: ModelParam) {
 
   def mlp3 = {
     val model = Sequential()
-    model.add(Linear(100, 2))
+    model.add(Linear(100, 40))
+    model.add(ReLU())
+    model.add(Linear(40, 20))
+    model.add(ReLU())
+    model.add(Linear(20, 10))
+    model.add(ReLU())
+    model.add(Linear(10, 2))
     model.add(ReLU())
     model.add(LogSoftMax())
     model

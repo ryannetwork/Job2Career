@@ -4,6 +4,7 @@ import org.apache.spark.ml.evaluation.{BinaryClassificationEvaluator, Multiclass
 import org.apache.spark.sql.DataFrame
 import com.intel.analytics.bigdl.apps.recommendation.Utils._
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.functions._
 
 object Evaluation {
 
@@ -29,5 +30,35 @@ object Evaluation {
     Seq(out, out1, out2, out3).map(x => toDecimal(3)(x))
   }
 
+  def evaluate2(evaluateDF: DataFrame) = {
+    val truePositive = evaluateDF.filter(col("prediction") === 1.0 && col("label") === 1.0).count()
+    val falsePositive = evaluateDF.filter(col("prediction") === 1.0 && col("label") === 0.0).count()
+    val trueNegative = evaluateDF.filter(col("prediction") === 0.0 && col("label") === 0.0).count()
+    val falseNegative = evaluateDF.filter(col("prediction") === 0.0 && col("label") === 1.0).count()
+    val accuracy = (truePositive.toDouble + trueNegative.toDouble) / (trueNegative.toDouble + truePositive.toDouble + falseNegative.toDouble + falsePositive.toDouble)
+    val precision = truePositive.toDouble / (truePositive.toDouble + falsePositive.toDouble)
+    val recall = truePositive.toDouble / (truePositive.toDouble + falseNegative.toDouble)
+
+    println("truePositive: " + truePositive)
+    println("falsePositive: " + falsePositive)
+    println("trueNegative: " + trueNegative)
+    println("falseNegative: " + falseNegative)
+    println("accuracy: " + accuracy)
+    println("precision: " + precision)
+    println("recall: " + recall)
+
+    val evaluation = new BinaryClassificationEvaluator()
+      .setLabelCol("label")
+      .setRawPredictionCol("prediction")
+    val evaluatLabels = evaluateDF
+      .withColumn("label", col("label").cast("double"))
+      .withColumn("prediction", col("prediction").cast("double"))
+    val modelAUROC = evaluation.setMetricName("areaUnderROC").evaluate(evaluatLabels)
+    val modelAUPR = evaluation.setMetricName("areaUnderPR").evaluate(evaluatLabels)
+    println("modelAUROC: " + modelAUROC)
+    println("modelAUPR: " + modelAUPR)
+    Seq(accuracy, precision, recall, modelAUROC, modelAUPR).map(x => toDecimal(3)(x))
+
+  }
 
 }

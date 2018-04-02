@@ -16,8 +16,11 @@ import scala.io.Source
 
 case class DataParams(val inputDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/data/indexed_application_job_resume_2016_2017_10",
                       val outputDir: String = "add it if you need it",
-                      val topK:Int = 500,
-                      val dictDir: String = "/Users/guoqiong/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.50d.txt")
+                      val topK: Int = 500,
+                      val dictDir: String = "/Users/guoqiong/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.50d.txt",
+                      val batchSize: Int = 32,
+                      val nEpochs: Int = 10,
+                      val lRate: Double = 1e-3)
 
 object TrainWithD2VGlove {
 
@@ -38,6 +41,12 @@ object TrainWithD2VGlove {
       opt[String]("dictDir")
         .text(s"wordVec data")
         .action((x, c) => c.copy(dictDir = x))
+      opt[Int]('b', "batchSize")
+        .text(s"batchSize")
+        .action((x, c) => c.copy(batchSize = x.toInt))
+      opt[Int]('e', "nEpochs")
+        .text("epoch numbers")
+        .action((x, c) => c.copy(nEpochs = x))
     }
 
     parser.parse(args, defaultParams).map {
@@ -52,7 +61,7 @@ object TrainWithD2VGlove {
     Logger.getLogger("org").setLevel(Level.ERROR)
 
     val conf = new SparkConf()
-       .setMaster("local[8]")
+      .setMaster("local[8]")
       .setAppName("app")
 
     val sc = SparkContext.getOrCreate(conf)
@@ -84,30 +93,30 @@ object TrainWithD2VGlove {
 
     joined.printSchema()
     println("-------------abs rank dist----------------------------")
-    getAbsRank(joined,param.topK).show(1000,false)
+    getAbsRank(joined, param.topK).show(1000, false)
 
-//    rankDF.show()
-//
-//    val precisionRecall = getPrecisionRecall(joined)
-//    precisionRecall.foreach(x => println(x._1 + "," + x._2 + "," + x._3))
-//
-//    val buckets = bucketize(joined).orderBy(col("bucket").desc)
-//    buckets.show(100)
-//
-//
-//    Seq(3, 5, 10, 15, 20, 30).map(x => {
-//
-//      val (ratio, ndcg) = getHitRatioNDCG(joined, x)
-//      x + "," + ratio + "," + ndcg
-//
-//    }).foreach(println)
+    //    rankDF.show()
+    //
+    //    val precisionRecall = getPrecisionRecall(joined)
+    //    precisionRecall.foreach(x => println(x._1 + "," + x._2 + "," + x._3))
+    //
+    //    val buckets = bucketize(joined).orderBy(col("bucket").desc)
+    //    buckets.show(100)
+    //
+    //
+    //    Seq(3, 5, 10, 15, 20, 30).map(x => {
+    //
+    //      val (ratio, ndcg) = getHitRatioNDCG(joined, x)
+    //      x + "," + ratio + "," + ndcg
+    //
+    //    }).foreach(println)
 
   }
 
   val gloveDir = s"/glove.6B/"
 
-  val stopWordString ="a,about,above,after,again,against,all,am,an,and,any,are,as,at,be,because,been,before,being,below,between,both,but,by,could,did,do,does,doing,down,during,each,few,for,from,further,had,has,have,having,he,he’d,he’ll,he’s,her,here,here’s,hers,herself,him,himself,his,how,how’s,I,I’d,I’ll,I’m,I’ve,if,in,into,is,it,it’s,its,itself,let’s,me,more,most,my,myself,nor,of,on,once,only,or,other,ought,our,ours,ourselves,out,over,own,same,she,she’d,she’ll,she’s,should,so,some,such,than,that,that’s,the,their,theirs,them,themselves,then,there,there’s,these,they,they’d,they’ll,they’re,they’ve,this,those,through,to,too,under,until,up,very,was,we,we’d,we’ll,we’re,we’ve,were,what,what’s,when,when’s,where,where’s,which,while,who,who’s,whom,why,why’s,with,would,you,you’d,you’ll,you’re,you’ve,your,yours,yourself,yourselves"
-  val stopWordSet = stopWordString.split(",") ++ Set(",",".")
+  val stopWordString = "a,about,above,after,again,against,all,am,an,and,any,are,as,at,be,because,been,before,being,below,between,both,but,by,could,did,do,does,doing,down,during,each,few,for,from,further,had,has,have,having,he,he’d,he’ll,he’s,her,here,here’s,hers,herself,him,himself,his,how,how’s,I,I’d,I’ll,I’m,I’ve,if,in,into,is,it,it’s,its,itself,let’s,me,more,most,my,myself,nor,of,on,once,only,or,other,ought,our,ours,ourselves,out,over,own,same,she,she’d,she’ll,she’s,should,so,some,such,than,that,that’s,the,their,theirs,them,themselves,then,there,there’s,these,they,they’d,they’ll,they’re,they’ve,this,those,through,to,too,under,until,up,very,was,we,we’d,we’ll,we’re,we’ve,were,what,what’s,when,when’s,where,where’s,which,while,who,who’s,whom,why,why’s,with,would,you,you’d,you’ll,you’re,you’ve,your,yours,yourself,yourselves"
+  val stopWordSet = stopWordString.split(",") ++ Set(",", ".")
 
   def loadWordVecMap(filename: String): Map[String, Array[Float]] = {
     val wordMap = for (line <- Source.fromFile(filename, "ISO-8859-1").getLines) yield {
@@ -116,7 +125,7 @@ object TrainWithD2VGlove {
       val coefs: Array[Float] = values.slice(1, values.length).map(_.toFloat)
       (word, coefs)
     }
-    wordMap.filter(x=> !stopWordSet.contains(x._1)).toMap
+    wordMap.filter(x => !stopWordSet.contains(x._1)).toMap
   }
 
   def doc2VecFromWordMap(dataFrame: DataFrame, brMap: Broadcast[Map[String, Array[Float]]], newCol: String, colName: String) = {

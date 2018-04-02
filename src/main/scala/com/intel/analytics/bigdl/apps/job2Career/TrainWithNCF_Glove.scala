@@ -31,6 +31,16 @@ object TrainWithNCF_Glove {
       opt[String]("dictDir")
         .text(s"wordVec data")
         .action((x, c) => c.copy(dictDir = x))
+      opt[Int]('b', "batchSize")
+        .text(s"batchSize")
+        .action((x, c) => c.copy(batchSize = x.toInt))
+      opt[Int]('e', "nEpochs")
+        .text("epoch numbers")
+        .action((x, c) => c.copy(nEpochs = x))
+      opt[Double]('l', "lRate")
+        .text("learning rate")
+        .action((x, c) => c.copy(lRate = x.toDouble))
+
     }
 
     parser.parse(args, defaultParams).map {
@@ -42,15 +52,17 @@ object TrainWithNCF_Glove {
   }
 
   def run(param: DataParams): Unit = {
+    println("learning rate: " + param.lRate)
 
-    Logger.getLogger("org").setLevel(Level.ERROR)
+    //Logger.getLogger("org").setLevel(Level.ERROR)
     val conf = Engine.createSparkConf().setAppName("app")
     val spark = SparkSession.builder().config(conf).getOrCreate()
-    spark.sparkContext.setLogLevel("WARN")
+    //spark.sparkContext.setLogLevel("WARN")
     Engine.init
 
     val input = param.inputDir
     val modelPath = param.inputDir + "/model"
+
     val indexed = spark.read.parquet(input + "/indexed")
     val userDict = spark.read.parquet(input + "/userDict")
     val itemDict = spark.read.parquet(input + "/itemDict")
@@ -59,65 +71,66 @@ object TrainWithNCF_Glove {
       .withColumn("label", add1(col("label")))
       .select("userVec", "itemVec", "label")
 
-    dataWithNegative.show(10, false)
+    dataWithNegative.show(2)
     val dataInLP = getFeaturesLP(dataWithNegative)
 
+
     dataInLP.printSchema()
-    //    val Array(trainingDF, validationDF) = dataInLP.randomSplit(Array(0.8, 0.2), seed = 1L)
-    //
-    //    println("training data-----------")
-    //    trainingDF.show(2)
-    //
-    //    trainingDF.cache()
-    //    validationDF.cache()
-    //
-    //    val time1 = System.nanoTime()
-    //    val modelParam = ModelParam(userEmbed = 20,
-    //      itemEmbed = 20,
-    //      midLayers = Array(40, 20),
-    //      labels = 2)
-    //
-    //    val recModel = new ModelUtils(modelParam)
-    //
-    //    // val model = recModel.ncf(userCount, itemCount)
-    //    val model = recModel.mlp3
-    //
-    //    val criterion = ClassNLLCriterion()
-    //    //  val criterion = MSECriterion[Float]()
-    //
-    //    val dlc: DLEstimator[Float] = new DLClassifier(model, criterion, Array(100))
-    //      .setBatchSize(1000)
-    //      .setOptimMethod(new Adam())
-    //      .setLearningRate(1e-2)
-    //      .setLearningRateDecay(1e-5)
-    //      .setMaxEpoch(10)
-    //
-    //    val dlModel: DLModel[Float] = dlc.fit(trainingDF)
-    //
-    //    dlModel.model.saveModule(modelPath, true)
-    //
-    //   val time2 = System.nanoTime()
-    //
-    //    val predictions: DataFrame = dlModel.setBatchSize(10).transform(validationDF)
-    //
-    //    val time3 = System.nanoTime()
-    //
-    //    predictions.cache()
-    //    predictions.show(3)
-    //    predictions.printSchema()
-    //
-    //    Evaluation.evaluate(predictions.withColumn("label", toZero(col("label")))
-    //      .withColumn("prediction", toZero(col("prediction"))))
-    //
-    //    val time4 = System.nanoTime()
-    //
-    //    val trainingTime = (time2 - time1) * (1e-9)
-    //    val predictionTime = (time3 - time2) * (1e-9)
-    //    val evaluationTime = (time4 - time3) * (1e-9)
-    //
-    //    println("training time(s):  " + toDecimal(3)(trainingTime))
-    //    println("prediction time(s):  " + toDecimal(3)(predictionTime))
-    //    println("evaluation time(s):  " + toDecimal(3)(predictionTime))
+    val Array(trainingDF, validationDF) = dataInLP.randomSplit(Array(0.8, 0.2), seed = 1L)
+
+    println("training data-----------")
+    trainingDF.show(2)
+
+    trainingDF.cache()
+    validationDF.cache()
+
+    val time1 = System.nanoTime()
+    val modelParam = ModelParam(userEmbed = 20,
+      itemEmbed = 20,
+      midLayers = Array(40, 20),
+      labels = 2)
+
+    val recModel = new ModelUtils(modelParam)
+
+    // val model = recModel.ncf(userCount, itemCount)
+    val model = recModel.mlp3
+
+    val criterion = ClassNLLCriterion()
+    //  val criterion = MSECriterion[Float]()
+
+    val dlc: DLEstimator[Float] = new DLClassifier(model, criterion, Array(100))
+      .setBatchSize(param.batchSize)
+      .setOptimMethod(new Adam())
+      .setLearningRate(param.lRate)
+      .setLearningRateDecay(1e-5)
+      .setMaxEpoch(param.nEpochs)
+
+    val dlModel: DLModel[Float] = dlc.fit(trainingDF)
+
+    dlModel.model.saveModule(modelPath, true)
+
+    val time2 = System.nanoTime()
+
+    val predictions: DataFrame = dlModel.transform(validationDF)
+
+    val time3 = System.nanoTime()
+
+    predictions.cache()
+    predictions.show(3)
+    predictions.printSchema()
+
+    Evaluation.evaluate2(predictions.withColumn("label", toZero(col("label")))
+      .withColumn("prediction", toZero(col("prediction"))))
+
+    val time4 = System.nanoTime()
+
+    val trainingTime = (time2 - time1) * (1e-9)
+    val predictionTime = (time3 - time2) * (1e-9)
+    val evaluationTime = (time4 - time3) * (1e-9)
+
+    println("training time(s):  " + toDecimal(3)(trainingTime))
+    println("prediction time(s):  " + toDecimal(3)(predictionTime))
+    println("evaluation time(s):  " + toDecimal(3)(predictionTime))
 
     processGoldendata(spark, param, modelPath)
     println("stop")
@@ -152,15 +165,16 @@ object TrainWithNCF_Glove {
     val validationVectors = DataProcess.getGloveVectors(validationCleaned, br)
     val validationLP = getFeaturesLP(validationVectors)
 
-    validationLP.persist()
     val predictions2: DataFrame = dlModel.transform(validationLP)
 
-    predictions2.show(50)
     predictions2.persist()
-    Evaluation.evaluate(predictions2.withColumn("label", toZero(col("label")))
-      .withColumn("prediction", toZero(col("prediction"))))
+    predictions2.select("userId", "itemId", "label", "prediction").show(50, false)
 
-    predictions2.coalesce(8).write.mode(SaveMode.Overwrite).parquet("/Users/guoqiong/intelWork/projects/jobs2Career/data/validation_predict")
+    val dataToValidation = predictions2.withColumn("label", toZero(col("label")))
+      .withColumn("prediction", toZero(col("prediction")))
+    Evaluation.evaluate2(dataToValidation)
+
+    // predictions2.coalesce(8).write.mode(SaveMode.Overwrite).parquet("/Users/guoqiong/intelWork/projects/jobs2Career/data/validation_predict")
 
   }
 

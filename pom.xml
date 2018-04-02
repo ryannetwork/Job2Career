@@ -21,7 +21,7 @@
         <PermGen>1024m</PermGen>
         <MaxPermGen>2048m</MaxPermGen>
         <CodeCacheSize>512m</CodeCacheSize>
-        <BIGDL_VERSION>0.4.0</BIGDL_VERSION>
+        <BIGDL_VERSION>0.5.0</BIGDL_VERSION>
     </properties>
 
     <dependencies>
@@ -132,7 +132,7 @@
                 </executions>
             </plugin>
 
-           <plugin>
+            <plugin>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.0</version>
                 <configuration>
@@ -187,15 +187,15 @@
                 </executions>
             </plugin>
 
-           <plugin>
-                 <groupId>org.apache.maven.plugins</groupId>
-                 <artifactId>maven-assembly-plugin</artifactId>
-                 <configuration>
-                     <descriptors>
-                         <descriptor>src/main/assembly/job.xml</descriptor>
-                     </descriptors>
-                 </configuration>
-           </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <configuration>
+                    <descriptors>
+                        <descriptor>src/main/assembly/job.xml</descriptor>
+                    </descriptors>
+                </configuration>
+            </plugin>
 
 
             <!--
