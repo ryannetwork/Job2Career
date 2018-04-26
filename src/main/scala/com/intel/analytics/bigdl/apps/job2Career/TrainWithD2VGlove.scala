@@ -21,7 +21,7 @@ case class TrainParam(val inputDir: String = "/Users/guoqiong/intelWork/projects
                       val valDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/data/validation/part*",
                       val batchSize: Int = 1024,
                       val nEpochs: Int = 10,
-                      val learningRate: Double = 5e-3,
+                      val learningRate: Double = 1e-2,
                       val learningRateDecay: Double = 1e-5)
 
 object TrainWithD2VGlove {

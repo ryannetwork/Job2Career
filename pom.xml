@@ -29,7 +29,7 @@
         <dependency>
             <groupId>com.intel.analytics.bigdl</groupId>
             <artifactId>bigdl-SPARK_2.2</artifactId>
-            <version>0.3.0</version>
+            <version>${BIGDL_VERSION}</version>
         </dependency>
 
         <dependency>
@@ -187,6 +187,7 @@
                 </executions>
             </plugin>
 
+            <!--
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-assembly-plugin</artifactId>
@@ -196,9 +197,8 @@
                     </descriptors>
                 </configuration>
             </plugin>
+            -->
 
-
-            <!--
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -218,9 +218,7 @@
                             </excludes>
                         </filter>
                     </filters>
-
                 </configuration>
-
                 <executions>
                     <execution>
                         <phase>package</phase>
@@ -230,7 +228,7 @@
                     </execution>
                 </executions>
             </plugin>
-          -->
+
         </plugins>
 
         <resources>
