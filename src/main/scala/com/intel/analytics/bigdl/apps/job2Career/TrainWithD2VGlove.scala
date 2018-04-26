@@ -14,21 +14,23 @@ import scopt.OptionParser
 import scala.collection.immutable
 import scala.io.Source
 
-case class DataParams(val inputDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/data/indexed_application_job_resume_2016_2017_10",
-                      val outputDir: String = "add it if you need it",
+case class TrainParam(val inputDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/data/indexed_application_job_resume_2016_2017_10",
+                      val outputDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/data/validation_predict",
                       val topK: Int = 500,
                       val dictDir: String = "/Users/guoqiong/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.50d.txt",
-                      val batchSize: Int = 32,
+                      val valDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/data/validation/part*",
+                      val batchSize: Int = 1024,
                       val nEpochs: Int = 10,
-                      val lRate: Double = 1e-3)
+                      val learningRate: Double = 5e-3,
+                      val learningRateDecay: Double = 1e-5)
 
 object TrainWithD2VGlove {
 
   def main(args: Array[String]): Unit = {
 
-    val defaultParams = DataParams()
+    val defaultParams = TrainParam()
 
-    val parser = new OptionParser[DataParams]("BigDL Example") {
+    val parser = new OptionParser[TrainParam]("BigDL Example") {
       opt[String]("inputDir")
         .text(s"inputDir")
         .action((x, c) => c.copy(inputDir = x))
@@ -57,7 +59,7 @@ object TrainWithD2VGlove {
     }
   }
 
-  def run(param: DataParams) = {
+  def run(param: TrainParam) = {
     Logger.getLogger("org").setLevel(Level.ERROR)
 
     val conf = new SparkConf()

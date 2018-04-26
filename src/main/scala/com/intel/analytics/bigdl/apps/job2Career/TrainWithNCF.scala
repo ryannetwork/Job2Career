@@ -17,9 +17,9 @@ object TrainWithNCF {
 
   def main(args: Array[String]): Unit = {
 
-    val defaultParams = DataParams()
+    val defaultParams = TrainParam()
 
-    val parser = new OptionParser[DataParams]("BigDL Example") {
+    val parser = new OptionParser[TrainParam]("BigDL Example") {
       opt[String]("inputDir")
         .text(s"inputDir")
         .action((x, c) => c.copy(inputDir = x))
@@ -39,7 +39,7 @@ object TrainWithNCF {
     }
   }
 
-  def run(param: DataParams): Unit = {
+  def run(param: TrainParam): Unit = {
 
     Logger.getLogger("org").setLevel(Level.ERROR)
     val conf = Engine.createSparkConf().setAppName("app")

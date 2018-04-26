@@ -47,6 +47,31 @@ object Utils {
     indexedDF.union(negativeSampleDF)
   }
 
+  def getNegativeSamples2(amplifier: Int, indexed: DataFrame): DataFrame = {
+
+    val indexedDF = indexed.select("userIdIndex", "itemIdIndex", "label")
+    val minMaxRow = indexedDF.agg(max("userIdIndex"), max("itemIdIndex")).collect()(0)
+    val (userCount, itemCount) = (minMaxRow.getDouble(0).toInt, minMaxRow.getDouble(1).toInt)
+    val sampleDict = indexedDF.rdd.map(row => row(0) + "," + row(1)).collect().toSet
+
+    val dfCount = indexedDF.count.toInt
+
+    import indexed.sqlContext.implicits._
+
+    val ran = new Random(seed = 42L)
+    val negative = indexedDF.rdd
+      .flatMap(x => {
+        val uid = x.getAs[Double](0)
+        val iid = (1 to amplifier).map(x => Math.max(ran.nextInt(itemCount), 1))
+        iid.map(x => (uid, x))
+      })
+      .filter(x => !sampleDict.contains(x._1 + "," + x._2)).distinct()
+      .map(x => (x._1, x._2, 0.0))
+      .toDF("userIdIndex", "itemIdIndex", "label")
+
+    negative
+  }
+
   def getNegativeSamples(amplifier: Int, trainDF: DataFrame) = {
 
     val indexedDF = trainDF.select("userIdIndex", "itemIdIndex", "label")
@@ -64,8 +89,8 @@ object Utils {
     val negativeSampleDF = indexedDF.sparkSession.sparkContext
       .parallelize(0 to numberRecords.toInt)
       .map(x => {
-        val uid = Math.max(Random.nextInt(userCount), 1)
-        val iid = Math.max(Random.nextInt(itemCount), 1)
+        val uid = Math.max(ran.nextInt(userCount), 1)
+        val iid = Math.max(ran.nextInt(itemCount), 1)
         (uid, iid)
       })
       .filter(x => !sampleDict.contains(x._1 + "," + x._2)).distinct()

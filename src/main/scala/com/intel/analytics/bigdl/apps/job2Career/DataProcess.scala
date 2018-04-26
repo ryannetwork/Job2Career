@@ -32,6 +32,13 @@ object DataProcess {
   def main(args: Array[String]): Unit = {
 
     val defaultParams = DataProcessParams()
+    Logger.getLogger("org").setLevel(Level.ERROR)
+
+    val conf = new SparkConf().setAppName("app")
+
+    val spark = SparkSession.builder().config(conf).getOrCreate()
+    spark.sparkContext.setLogLevel("ERROR")
+    spark.sqlContext.setConf("spark.sql.shuffle.partitions", "1000")
 
     val parser = new OptionParser[DataProcessParams]("BigDL Example") {
       opt[String]("inputDir")
@@ -53,22 +60,14 @@ object DataProcess {
 
     parser.parse(args, defaultParams).map {
       params =>
-        run(params)
+        run(spark, params)
     } getOrElse {
       System.exit(1)
     }
 
   }
 
-  def run(para: DataProcessParams): Unit = {
-
-    Logger.getLogger("org").setLevel(Level.ERROR)
-
-    val conf = new SparkConf().setAppName("app")
-
-    val spark = SparkSession.builder().config(conf).getOrCreate()
-    spark.sparkContext.setLogLevel("ERROR")
-    spark.sqlContext.setConf("spark.sql.shuffle.partitions", "1000")
+  def run(spark: SparkSession, para: DataProcessParams): Unit = {
 
     val dataPath = para.inputDir
     val lookupDict = para.dictDir
@@ -200,7 +199,7 @@ object DataProcess {
 
   def negativeJoin(indexed: DataFrame, itemDict: DataFrame, userDict: DataFrame, negativeK: Int = 50): DataFrame = {
 
-    val negativeSamples = getNegativeSamples(negativeK, indexed)
+    val negativeSamples = getNegativeSamples2(negativeK, indexed)
 
     val unioned = negativeSamples.union(indexed)
     val out = unioned

@@ -19,9 +19,14 @@ object TrainWithNCF_Glove {
 
   def main(args: Array[String]): Unit = {
 
-    val defaultParams = DataParams()
+    val defaultParams = TrainParam()
 
-    val parser = new OptionParser[DataParams]("BigDL Example") {
+    Logger.getLogger("org").setLevel(Level.ERROR)
+    val conf = Engine.createSparkConf().setAppName("app")
+    val spark = SparkSession.builder().config(conf).getOrCreate()
+    //spark.sparkContext.setLogLevel("WARN")
+
+    val parser = new OptionParser[TrainParam]("BigDL Example") {
       opt[String]("inputDir")
         .text(s"inputDir")
         .action((x, c) => c.copy(inputDir = x))
@@ -31,35 +36,35 @@ object TrainWithNCF_Glove {
       opt[String]("dictDir")
         .text(s"wordVec data")
         .action((x, c) => c.copy(dictDir = x))
+      opt[String]("valDir")
+        .text(s"valDir data")
+        .action((x, c) => c.copy(valDir = x))
       opt[Int]('b', "batchSize")
         .text(s"batchSize")
         .action((x, c) => c.copy(batchSize = x.toInt))
       opt[Int]('e', "nEpochs")
         .text("epoch numbers")
         .action((x, c) => c.copy(nEpochs = x))
-      opt[Double]('l', "lRate")
+      opt[Double]('l', "learningRate")
         .text("learning rate")
-        .action((x, c) => c.copy(lRate = x.toDouble))
+        .action((x, c) => c.copy(learningRate = x.toDouble))
+      opt[Double]('d', "learningRateDecay")
+        .text("learning rate decay")
+        .action((x, c) => c.copy(learningRateDecay = x.toDouble))
 
     }
 
     parser.parse(args, defaultParams).map {
       params =>
-        run(params)
+        run(spark: SparkSession, params)
     } getOrElse {
       System.exit(1)
     }
   }
 
-  def run(param: DataParams): Unit = {
-    println("learning rate: " + param.lRate)
+  def run(spark: SparkSession, param: TrainParam): Unit = {
 
-    //Logger.getLogger("org").setLevel(Level.ERROR)
-    val conf = Engine.createSparkConf().setAppName("app")
-    val spark = SparkSession.builder().config(conf).getOrCreate()
-    //spark.sparkContext.setLogLevel("WARN")
     Engine.init
-
     val input = param.inputDir
     val modelPath = param.inputDir + "/model"
 
@@ -67,19 +72,20 @@ object TrainWithNCF_Glove {
     val userDict = spark.read.parquet(input + "/userDict")
     val itemDict = spark.read.parquet(input + "/itemDict")
 
-    val dataWithNegative = DataProcess.negativeJoin(indexed, itemDict, userDict, negativeK = 5)
+    val Array(indexedTrain, indexedValidation) = indexed.randomSplit(Array(0.8, 0.2), seed = 1L)
+    val trainWithNegative = DataProcess.negativeJoin(indexedTrain, itemDict, userDict, negativeK = 1)
       .withColumn("label", add1(col("label")))
-      .select("userVec", "itemVec", "label")
+    val validationWithNegative = DataProcess.negativeJoin(indexedValidation, itemDict, userDict, negativeK = 1)
+      .withColumn("label", add1(col("label")))
 
-    dataWithNegative.show(2)
-    val dataInLP = getFeaturesLP(dataWithNegative)
+    println("---------distribution of label trainWithNegative ----------------")
+    // trainWithNegative.select("label").groupBy("label").count().show()
+    val trainingDF = getFeaturesLP(trainWithNegative)
+    val validationDF = getFeaturesLP(validationWithNegative)
 
-
-    dataInLP.printSchema()
-    val Array(trainingDF, validationDF) = dataInLP.randomSplit(Array(0.8, 0.2), seed = 1L)
-
-    println("training data-----------")
-    trainingDF.show(2)
+    trainingDF.printSchema()
+    trainingDF.groupBy("label").count().show()
+    validationDF.groupBy("label").count().show()
 
     trainingDF.cache()
     validationDF.cache()
@@ -96,18 +102,17 @@ object TrainWithNCF_Glove {
     val model = recModel.mlp3
 
     val criterion = ClassNLLCriterion()
-    //  val criterion = MSECriterion[Float]()
 
     val dlc: DLEstimator[Float] = new DLClassifier(model, criterion, Array(100))
       .setBatchSize(param.batchSize)
       .setOptimMethod(new Adam())
-      .setLearningRate(param.lRate)
-      .setLearningRateDecay(1e-5)
+      .setLearningRate(param.learningRate)
+      .setLearningRateDecay(param.learningRateDecay)
       .setMaxEpoch(param.nEpochs)
 
     val dlModel: DLModel[Float] = dlc.fit(trainingDF)
 
-    dlModel.model.saveModule(modelPath, true)
+    dlModel.model.saveModule(modelPath, null, true)
 
     val time2 = System.nanoTime()
 
@@ -116,7 +121,7 @@ object TrainWithNCF_Glove {
     val time3 = System.nanoTime()
 
     predictions.cache()
-    predictions.show(3)
+    predictions.show(30)
     predictions.printSchema()
 
     Evaluation.evaluate2(predictions.withColumn("label", toZero(col("label")))
@@ -137,14 +142,12 @@ object TrainWithNCF_Glove {
 
   }
 
+  def processGoldendata(spark: SparkSession, para: TrainParam, modelPath: String) = {
 
-  def processGoldendata(spark: SparkSession, para: DataParams, modelPath: String) = {
-
-    val loadedModel = Module.loadModule(modelPath)
+    val loadedModel = Module.loadModule(modelPath, null)
     val dlModel = new DLClassifierModel[Float](loadedModel, Array(100))
 
-    val input = "/Users/guoqiong/intelWork/projects/jobs2Career/data/validation/part*"
-    val validationIn = spark.read.parquet(input)
+    val validationIn = spark.read.parquet(para.valDir)
     validationIn.printSchema()
     val validationDF = validationIn
       .select("resume_id", "job_id", "resume.resume.normalizedBody", "description", "apply_flag")
@@ -174,7 +177,7 @@ object TrainWithNCF_Glove {
       .withColumn("prediction", toZero(col("prediction")))
     Evaluation.evaluate2(dataToValidation)
 
-    // predictions2.coalesce(8).write.mode(SaveMode.Overwrite).parquet("/Users/guoqiong/intelWork/projects/jobs2Career/data/validation_predict")
+    predictions2.coalesce(8).write.mode(SaveMode.Overwrite).parquet(para.outputDir)
 
   }
 
