@@ -121,13 +121,17 @@ object TrainWithD2VGlove {
   val stopWordSet = stopWordString.split(",") ++ Set(",", ".")
 
   def loadWordVecMap(filename: String): Map[String, Array[Float]] = {
-    val wordMap = for (line <- Source.fromFile(filename, "ISO-8859-1").getLines) yield {
+
+    val sc = SparkContext.getOrCreate()
+    val dict = sc.textFile(filename)
+    // val wordMap = for (line <- Source.fromFile(filename, "ISO-8859-1").getLines) yield {
+    val wordMap = dict.map { line =>
       val values = line.split(" ")
       val word = values(0)
       val coefs: Array[Float] = values.slice(1, values.length).map(_.toFloat)
       (word, coefs)
     }
-    wordMap.filter(x => !stopWordSet.contains(x._1)).toMap
+    wordMap.filter(x => !stopWordSet.contains(x._1)).collect().toMap
   }
 
   def doc2VecFromWordMap(dataFrame: DataFrame, brMap: Broadcast[Map[String, Array[Float]]], newCol: String, colName: String) = {
