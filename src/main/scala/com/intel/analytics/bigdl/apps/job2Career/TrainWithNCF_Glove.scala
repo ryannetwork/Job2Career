@@ -87,8 +87,8 @@ object TrainWithNCF_Glove {
     trainingDF.groupBy("label").count().show()
     validationDF.groupBy("label").count().show()
 
-    trainingDF.cache()
-    validationDF.cache()
+    trainingDF.coalesce(16).cache()
+    validationDF.coalesce(16).cache()
 
     val time1 = System.nanoTime()
     val modelParam = ModelParam(userEmbed = 20,
@@ -121,9 +121,7 @@ object TrainWithNCF_Glove {
     val time3 = System.nanoTime()
 
     predictions.cache()
-    predictions.show(30)
-    predictions.printSchema()
-
+    println("validation results")
     Evaluation.evaluate2(predictions.withColumn("label", toZero(col("label")))
       .withColumn("prediction", toZero(col("prediction"))))
 
@@ -173,11 +171,12 @@ object TrainWithNCF_Glove {
     predictions2.persist()
     predictions2.select("userId", "itemId", "label", "prediction").show(50, false)
 
+    println("validation results on golden dataset")
     val dataToValidation = predictions2.withColumn("label", toZero(col("label")))
       .withColumn("prediction", toZero(col("prediction")))
     Evaluation.evaluate2(dataToValidation)
 
-    predictions2.coalesce(8).write.mode(SaveMode.Overwrite).parquet(para.outputDir)
+    predictions2.write.mode(SaveMode.Overwrite).parquet(para.outputDir)
 
   }
 
