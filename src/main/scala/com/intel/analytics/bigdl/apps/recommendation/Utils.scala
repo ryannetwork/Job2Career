@@ -58,18 +58,18 @@ object Utils {
 
     import indexed.sqlContext.implicits._
 
-    val ran = new Random(seed = 42L)
-    val negative = indexedDF.rdd
-      .flatMap(x => {
-        val uid = x.getAs[Double](0)
+    val negativeDF = indexedDF.rdd.mapPartitionsWithIndex( (index, it) => {
+      val ran = new Random(index)
+      it.flatMap( row => {
+        val uid = row.getAs[Double](0)
         val iid = (1 to amplifier).map(x => Math.max(ran.nextInt(itemCount), 1))
         iid.map(x => (uid, x))
       })
-      .filter(x => !sampleDict.contains(x._1 + "," + x._2)).distinct()
+    }).filter(x => !sampleDict.contains(x._1 + "," + x._2)).distinct()
       .map(x => (x._1, x._2, 0.0))
       .toDF("userIdIndex", "itemIdIndex", "label")
 
-    negative
+    negativeDF
   }
 
   def getNegativeSamples(amplifier: Int, trainDF: DataFrame) = {
@@ -85,15 +85,23 @@ object Utils {
 
     import indexedDF.sparkSession.implicits._
 
-    val ran = new Random(seed = 42L)
-    val negativeSampleDF = indexedDF.sparkSession.sparkContext
-      .parallelize(0 to numberRecords.toInt)
-      .map(x => {
-        val uid = Math.max(ran.nextInt(userCount), 1)
-        val iid = Math.max(ran.nextInt(itemCount), 1)
-        (uid, iid)
-      })
-      .filter(x => !sampleDict.contains(x._1 + "," + x._2)).distinct()
+    val sc = indexedDF.sparkSession.sparkContext
+
+    val ls = 0 to numberRecords.toInt
+
+    val negativeSampleDF = sc.parallelize(ls, sc.defaultParallelism)
+        .mapPartitionsWithIndex((index,it) =>{
+
+          val ran1 = new Random(index)
+          val ran2 = new Random(index)
+
+          it.map( x=> {
+            val uid = Math.max(ran1.nextInt(userCount), 1)
+            val iid = Math.max(ran2.nextInt(itemCount), 1)
+            (uid, iid)
+          })
+
+        }).filter(x => !sampleDict.contains(x._1 + "," + x._2)).distinct()
       .map(x => (x._1, x._2, 0.0))
       .toDF("userIdIndex", "itemIdIndex", "label")
 

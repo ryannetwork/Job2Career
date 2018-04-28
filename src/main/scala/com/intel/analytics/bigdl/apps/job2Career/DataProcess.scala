@@ -199,7 +199,7 @@ object DataProcess {
 
   def negativeJoin(indexed: DataFrame, itemDict: DataFrame, userDict: DataFrame, negativeK: Int = 50): DataFrame = {
 
-    val negativeSamples = getNegativeSamples(negativeK, indexed)
+    val negativeSamples = getNegativeSamples2(negativeK, indexed)
 
     val unioned = negativeSamples.union(indexed)
     val out = unioned

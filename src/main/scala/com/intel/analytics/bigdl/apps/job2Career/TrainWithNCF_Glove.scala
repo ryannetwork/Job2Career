@@ -72,23 +72,26 @@ object TrainWithNCF_Glove {
     val userDict = spark.read.parquet(input + "/userDict")
     val itemDict = spark.read.parquet(input + "/itemDict")
 
-    val Array(indexedTrain, indexedValidation) = indexed.randomSplit(Array(0.8, 0.2), seed = 1L)
-    val trainWithNegative = DataProcess.negativeJoin(indexedTrain, itemDict, userDict, negativeK = 1)
+    val splitNum = (userDict.count() * 0.8).toInt
+
+    //    val indexedTrain = indexed.filter(col("userIdIndex") <= splitNum)
+    //    val indexedValidation = indexed.filter(col("userIdIndex") > splitNum)
+
+    val indexedWithNegative = DataProcess.negativeJoin(indexed, itemDict, userDict, negativeK = 1)
       .withColumn("label", add1(col("label")))
-    val validationWithNegative = DataProcess.negativeJoin(indexedValidation, itemDict, userDict, negativeK = 1)
-      .withColumn("label", add1(col("label")))
+
+    val Array(trainWithNegative, validationWithNegative) = indexedWithNegative.randomSplit(Array(0.8, 0.2), 1L)
 
     println("---------distribution of label trainWithNegative ----------------")
     // trainWithNegative.select("label").groupBy("label").count().show()
     val trainingDF = getFeaturesLP(trainWithNegative)
     val validationDF = getFeaturesLP(validationWithNegative)
 
-    trainingDF.printSchema()
     trainingDF.groupBy("label").count().show()
     validationDF.groupBy("label").count().show()
 
-    trainingDF.coalesce(16).cache()
-    validationDF.coalesce(16).cache()
+    trainingDF.cache()
+    validationDF.cache()
 
     val time1 = System.nanoTime()
     val modelParam = ModelParam(userEmbed = 20,
@@ -112,6 +115,7 @@ object TrainWithNCF_Glove {
 
     val dlModel: DLModel[Float] = dlc.fit(trainingDF)
 
+    println(dlModel.model.getParameters())
     dlModel.model.saveModule(modelPath, null, true)
 
     val time2 = System.nanoTime()
@@ -120,7 +124,8 @@ object TrainWithNCF_Glove {
 
     val time3 = System.nanoTime()
 
-    predictions.cache()
+    predictions.cache().count()
+    predictions.show(20)
     println("validation results")
     Evaluation.evaluate2(predictions.withColumn("label", toZero(col("label")))
       .withColumn("prediction", toZero(col("prediction"))))
@@ -144,9 +149,10 @@ object TrainWithNCF_Glove {
 
     val loadedModel = Module.loadModule(modelPath, null)
     val dlModel = new DLClassifierModel[Float](loadedModel, Array(100))
+      .setBatchSize(para.batchSize)
 
     val validationIn = spark.read.parquet(para.valDir)
-    validationIn.printSchema()
+    // validationIn.printSchema()
     val validationDF = validationIn
       .select("resume_id", "job_id", "resume.resume.normalizedBody", "description", "apply_flag")
       .withColumn("label", add1(col("apply_flag")))
@@ -164,12 +170,12 @@ object TrainWithNCF_Glove {
 
     val validationCleaned = DataProcess.cleanData(validationDF, br.value)
     val validationVectors = DataProcess.getGloveVectors(validationCleaned, br)
-    val validationLP = getFeaturesLP(validationVectors)
+    val validationLP = getFeaturesLP(validationVectors).coalesce(32)
 
     val predictions2: DataFrame = dlModel.transform(validationLP)
 
-    predictions2.persist()
-    predictions2.select("userId", "itemId", "label", "prediction").show(50, false)
+    predictions2.persist().count()
+    predictions2.select("userId", "itemId", "label", "prediction").show(20, false)
 
     println("validation results on golden dataset")
     val dataToValidation = predictions2.withColumn("label", toZero(col("label")))
