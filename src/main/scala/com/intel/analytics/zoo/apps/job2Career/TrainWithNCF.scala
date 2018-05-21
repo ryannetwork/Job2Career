@@ -1,16 +1,16 @@
-package com.intel.analytics.bigdl.apps.job2Career
+package com.intel.analytics.zoo.apps.job2Career
 
-import com.intel.analytics.bigdl.apps.recommendation.Utils._
-import com.intel.analytics.bigdl.apps.recommendation.{Evaluation, ModelParam, ModelUtils}
+import com.intel.analytics.zoo.apps.recommendation.Utils._
+import com.intel.analytics.zoo.apps.recommendation.{ModelParam, ModelUtils}
 import com.intel.analytics.bigdl.nn._
 import com.intel.analytics.bigdl.optim.Adam
 import com.intel.analytics.bigdl.tensor.TensorNumericMath.TensorNumeric.NumericFloat
 import com.intel.analytics.bigdl.utils.Engine
+import com.intel.analytics.zoo.apps.recommendation.{Evaluation, ModelParam, ModelUtils}
 import org.apache.log4j.{Level, Logger}
-import org.apache.spark.SparkContext
 import org.apache.spark.ml.{DLClassifier, DLModel}
-import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.{Row, SparkSession}
 import scopt.OptionParser
 
 object TrainWithNCF {
@@ -92,7 +92,7 @@ object TrainWithNCF {
     val dlModel: DLModel[Float] = dlc.fit(trainingDF)
 
     println("featuresize " + dlModel.featureSize)
-    println("model weights  " + dlModel.model.getParameters())
+    println("model weights  " + dlModel.model.getParametersTable())
     val time2 = System.nanoTime()
 
     val predictions = dlModel.setBatchSize(10).transform(validationDF)

@@ -1,19 +1,30 @@
-package com.intel.analytics.bigdl.apps.job2Career
+package com.intel.analytics.zoo.apps.job2Career
 
-import com.intel.analytics.bigdl.apps.job2Career.TrainWithD2VGlove.loadWordVecMap
-import com.intel.analytics.bigdl.apps.recommendation.Utils._
-import com.intel.analytics.bigdl.apps.recommendation.{Evaluation, ModelParam, ModelUtils}
+import com.intel.analytics.zoo.apps.recommendation.Utils._
+import com.intel.analytics.zoo.apps.job2Career.TrainWithD2VGlove._
 import com.intel.analytics.bigdl.nn._
 import com.intel.analytics.bigdl.optim.Adam
 import com.intel.analytics.bigdl.tensor.TensorNumericMath.TensorNumeric.NumericFloat
 import com.intel.analytics.bigdl.utils.Engine
+import com.intel.analytics.zoo.apps.recommendation.{Evaluation, ModelParam, ModelUtils}
 import org.apache.log4j.{Level, Logger}
-import org.apache.spark.SparkContext
+import org.apache.spark.SparkConf
 import org.apache.spark.broadcast.Broadcast
-import org.apache.spark.ml.{DLClassifier, DLClassifierModel, DLEstimator, DLModel}
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.{DataFrame, Row, SaveMode, SparkSession}
+import org.apache.spark.sql.{DataFrame, SQLContext, SaveMode, SparkSession}
 import scopt.OptionParser
+import com.intel.analytics.zoo.common.NNContext
+import com.intel.analytics.zoo.pipeline.nnframes.{NNClassifier, NNClassifierModel, NNEstimator, NNModel}
+
+case class TrainParam(val inputDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/data/indexed_application_job_resume_2016_2017_10",
+                      val outputDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/data/validation_predict",
+                      val topK: Int = 500,
+                      val dictDir: String = "/Users/guoqiong/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.50d.txt",
+                      val valDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/data/validation/part*",
+                      val batchSize: Int = 8000,
+                      val nEpochs: Int = 5,
+                      val learningRate: Double = 0.005,
+                      val learningRateDecay: Double = 1e-6)
 
 object TrainWithNCF_Glove {
 
@@ -21,8 +32,10 @@ object TrainWithNCF_Glove {
 
     val defaultParams = TrainParam()
 
+    val conf = new SparkConf()
+    conf.setAppName("NCFExample").set("spark.sql.crossJoin.enabled", "true")
+    val sc = NNContext.getNNContext(conf)
     Logger.getLogger("org").setLevel(Level.ERROR)
-    val conf = Engine.createSparkConf().setAppName("app")
     val spark = SparkSession.builder().config(conf).getOrCreate()
     //spark.sparkContext.setLogLevel("WARN")
 
@@ -104,23 +117,29 @@ object TrainWithNCF_Glove {
     // val model = recModel.ncf(userCount, itemCount)
     val model = recModel.mlp3
 
-    val criterion = ClassNLLCriterion()
-
-    val dlc: DLEstimator[Float] = new DLClassifier(model, criterion, Array(100))
+    val criterion = ClassNLLCriterion[Float]()
+    val dlc =  NNClassifier(model, criterion, Array(100))
       .setBatchSize(param.batchSize)
       .setOptimMethod(new Adam())
       .setLearningRate(param.learningRate)
       .setLearningRateDecay(param.learningRateDecay)
       .setMaxEpoch(param.nEpochs)
 
-    val dlModel: DLModel[Float] = dlc.fit(trainingDF)
+    //    val dlc: DLEstimator[Float] = new DLClassifier(model, criterion, Array(100))
+    //      .setBatchSize(param.batchSize)
+    //      .setOptimMethod(new Adam())
+    //      .setLearningRate(param.learningRate)
+    //      .setLearningRateDecay(param.learningRateDecay)
+    //      .setMaxEpoch(param.nEpochs)
 
-    println(dlModel.model.getParameters())
-    dlModel.model.saveModule(modelPath, null, true)
+    val nNModel = dlc.fit(trainingDF)
+
+    println(nNModel.model.getParametersTable())
+    nNModel.model.saveModule(modelPath, null, true)
 
     val time2 = System.nanoTime()
 
-    val predictions: DataFrame = dlModel.transform(validationDF)
+    val predictions: DataFrame = nNModel.transform(validationDF)
 
     val time3 = System.nanoTime()
 
@@ -148,7 +167,7 @@ object TrainWithNCF_Glove {
   def processGoldendata(spark: SparkSession, para: TrainParam, modelPath: String) = {
 
     val loadedModel = Module.loadModule(modelPath, null)
-    val dlModel = new DLClassifierModel[Float](loadedModel, Array(100))
+    val nNModel =  NNClassifierModel(loadedModel, Array(100))
       .setBatchSize(para.batchSize)
 
     val validationIn = spark.read.parquet(para.valDir)
@@ -172,7 +191,7 @@ object TrainWithNCF_Glove {
     val validationVectors = DataProcess.getGloveVectors(validationCleaned, br)
     val validationLP = getFeaturesLP(validationVectors).coalesce(32)
 
-    val predictions2: DataFrame = dlModel.transform(validationLP)
+    val predictions2: DataFrame = nNModel.transform(validationLP)
 
     predictions2.persist().count()
     predictions2.select("userId", "itemId", "label", "prediction").show(20, false)

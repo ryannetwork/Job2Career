@@ -1,25 +1,19 @@
-package com.intel.analytics.bigdl.apps.job2Career
+package com.intel.analytics.zoo.apps.job2Career
 
-import org.apache.spark.broadcast.Broadcast
-import org.apache.spark.ml.{Pipeline, linalg}
-import org.apache.spark.ml.feature.{LabeledPoint, StringIndexer}
-import org.apache.spark.sql.functions.{udf, _}
-import org.apache.spark.sql._
-
-import scala.collection.{immutable, mutable}
-import scala.io.Source
-import com.intel.analytics.bigdl.apps.job2Career.DataProcess._
-import com.intel.analytics.bigdl.apps.job2Career.TrainWithD2VGlove.{doc2VecFromWordMap, loadWordVecMap, run}
-import com.intel.analytics.bigdl.apps.recommendation.Utils._
+import com.intel.analytics.zoo.apps.job2Career.TrainWithD2VGlove._
+import com.intel.analytics.zoo.apps.recommendation.Utils._
 import org.apache.log4j.{Level, Logger}
-import org.apache.spark.ml.linalg.Vectors
-import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.SparkConf
+import org.apache.spark.broadcast.Broadcast
+import org.apache.spark.ml.Pipeline
+import org.apache.spark.ml.feature.StringIndexer
+import org.apache.spark.sql._
 import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.functions.{udf, _}
 import org.apache.spark.storage.StorageLevel
 import scopt.OptionParser
-import org.apache.spark.sql.functions._
 
-import scala.util.Random
+import scala.collection.mutable
 
 case class DataProcessParams(val inputDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/",
                              val outputDir: String = "add it if you need it",

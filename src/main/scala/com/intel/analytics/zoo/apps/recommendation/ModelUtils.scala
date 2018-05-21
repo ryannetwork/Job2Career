@@ -1,4 +1,4 @@
-package com.intel.analytics.bigdl.apps.recommendation
+package com.intel.analytics.zoo.apps.recommendation
 
 import com.intel.analytics.bigdl.nn.Graph.ModuleNode
 import com.intel.analytics.bigdl.nn.{Graph, _}

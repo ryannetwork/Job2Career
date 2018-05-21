@@ -1,15 +1,15 @@
-package com.intel.analytics.bigdl.apps.recommendation
+package com.intel.analytics.zoo.apps.recommendation
 
 import com.intel.analytics.bigdl.dataset.Sample
 import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.utils.T
-import org.apache.spark.ml.{Pipeline, linalg}
-import org.apache.spark.ml.feature.{LabeledPoint, StringIndexer}
+import org.apache.spark.ml.feature.LabeledPoint
+import org.apache.spark.ml.linalg
 import org.apache.spark.ml.linalg.Vectors
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.functions._
+import org.apache.spark.sql.functions.{rank, _}
 
 import scala.collection.mutable
 import scala.util.Random

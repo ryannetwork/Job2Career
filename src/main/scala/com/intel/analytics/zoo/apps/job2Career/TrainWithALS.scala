@@ -1,12 +1,12 @@
-package com.intel.analytics.bigdl.apps.job2Career
+package com.intel.analytics.zoo.apps.job2Career
 
-import com.intel.analytics.bigdl.apps.recommendation.Evaluation
-import com.intel.analytics.bigdl.apps.recommendation.Utils._
+import com.intel.analytics.zoo.apps.recommendation.Utils._
+import com.intel.analytics.zoo.apps.recommendation.Evaluation
+import org.apache.log4j.{Level, Logger}
 import org.apache.spark.ml.evaluation.{BinaryClassificationEvaluator, RegressionEvaluator}
 import org.apache.spark.ml.recommendation.ALS
-import org.apache.spark.sql.functions._
 import org.apache.spark.sql.SparkSession
-import org.apache.log4j.{Level, Logger}
+import org.apache.spark.sql.functions._
 
 object TrainWithALS {
 

@@ -1,9 +1,6 @@
-package com.intel.analytics.bigdl.apps.job2Career
+package com.intel.analytics.zoo.apps.job2Career
 
-import com.intel.analytics.bigdl.apps.recommendation.Utils._
-import com.intel.analytics.bigdl.example.textclassification.TextClassifier.log
-import com.intel.analytics.bigdl.example.utils.{AbstractTextClassificationParams, TextClassificationParams, TextClassifier}
-import com.intel.analytics.bigdl.utils.Engine
+import com.intel.analytics.zoo.apps.recommendation.Utils._
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.broadcast.Broadcast
@@ -14,15 +11,6 @@ import scopt.OptionParser
 import scala.collection.immutable
 import scala.io.Source
 
-case class TrainParam(val inputDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/data/indexed_application_job_resume_2016_2017_10",
-                      val outputDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/data/validation_predict",
-                      val topK: Int = 500,
-                      val dictDir: String = "/Users/guoqiong/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.50d.txt",
-                      val valDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/data/validation/part*",
-                      val batchSize: Int = 8000,
-                      val nEpochs: Int = 200,
-                      val learningRate: Double = 0.005,
-                      val learningRateDecay: Double = 1e-6)
 
 object TrainWithD2VGlove {
 

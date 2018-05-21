@@ -1,7 +1,7 @@
-package com.intel.analytics.bigdl.apps.job2Career
+package com.intel.analytics.zoo.apps.job2Career
 
-import com.intel.analytics.bigdl.apps.job2Career.DataProcess._
 import com.intel.analytics.bigdl.utils.Engine
+import com.intel.analytics.zoo.apps.job2Career.DataProcess._
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.SparkContext
 import org.apache.spark.sql.SparkSession

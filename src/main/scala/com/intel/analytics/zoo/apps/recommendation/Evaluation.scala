@@ -1,9 +1,8 @@
-package com.intel.analytics.bigdl.apps.recommendation
+package com.intel.analytics.zoo.apps.recommendation
 
+import com.intel.analytics.zoo.apps.recommendation.Utils._
 import org.apache.spark.ml.evaluation.{BinaryClassificationEvaluator, MulticlassClassificationEvaluator}
 import org.apache.spark.sql.DataFrame
-import com.intel.analytics.bigdl.apps.recommendation.Utils._
-import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.functions._
 
 object Evaluation {
