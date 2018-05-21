@@ -22,7 +22,7 @@ case class TrainParam(val inputDir: String = "/Users/guoqiong/intelWork/projects
                       val dictDir: String = "/Users/guoqiong/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.50d.txt",
                       val valDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/data/validation/part*",
                       val batchSize: Int = 8000,
-                      val nEpochs: Int = 5,
+                      val nEpochs: Int = 20,
                       val learningRate: Double = 0.005,
                       val learningRateDecay: Double = 1e-6)
 
