@@ -25,7 +25,7 @@ case class DataProcessParams(val inputDir: String = "/Users/guoqiong/intelWork/p
                              val outputDir: String = "add it if you need it",
                              val topK: Int = 500,
                              val negativeK: Int = 50,
-                             val dictDir: String = "/Users/guoqiong/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.50d.txt")
+                             val dictDir: String = "/Users/guoqiong/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.300d.txt")
 
 object DataProcess {
 
@@ -115,7 +115,7 @@ object DataProcess {
     //      .orderBy("applyJobCount").show(1000, false)
 
 
-    val output = dataPath + "/data/indexed_application_job_resume_2016_2017_10"
+    val output = dataPath + "/data/indexed_application_job_resume_2016_2017_10_300d"
 
     indexed.printSchema()
 

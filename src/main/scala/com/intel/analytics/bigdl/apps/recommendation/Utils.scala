@@ -152,7 +152,7 @@ object Utils {
       val vec = userVec ++ itemVec
       val vect: Seq[Double] = vec.map(_.toDouble)
       val f: linalg.Vector = Vectors.dense(vect.toArray)
-      require(f.toArray.size == 100)
+ //     require(f.toArray.size == 100)
       f.toArray
     })
 

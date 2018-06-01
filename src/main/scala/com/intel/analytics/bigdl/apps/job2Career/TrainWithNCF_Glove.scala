@@ -45,6 +45,9 @@ object TrainWithNCF_Glove {
       opt[Int]('e', "nEpochs")
         .text("epoch numbers")
         .action((x, c) => c.copy(nEpochs = x))
+      opt[Int]('f', "vectDim")
+        .text("dimension of glove vectors")
+        .action((x, c) => c.copy(vectDim = x))
       opt[Double]('l', "learningRate")
         .text("learning rate")
         .action((x, c) => c.copy(learningRate = x.toDouble))
@@ -106,7 +109,7 @@ object TrainWithNCF_Glove {
 
     val criterion = ClassNLLCriterion()
 
-    val dlc: DLEstimator[Float] = new DLClassifier(model, criterion, Array(100))
+    val dlc: DLEstimator[Float] = new DLClassifier(model, criterion, Array(2 * param.vectDim))
       .setBatchSize(param.batchSize)
       .setOptimMethod(new Adam())
       .setLearningRate(param.learningRate)
@@ -148,7 +151,7 @@ object TrainWithNCF_Glove {
   def processGoldendata(spark: SparkSession, para: TrainParam, modelPath: String) = {
 
     val loadedModel = Module.loadModule(modelPath, null)
-    val dlModel = new DLClassifierModel[Float](loadedModel, Array(100))
+    val dlModel = new DLClassifierModel[Float](loadedModel, Array(2 * para.vectDim))
       .setBatchSize(para.batchSize)
 
     val validationIn = spark.read.parquet(para.valDir)
