@@ -14,7 +14,7 @@ import scopt.OptionParser
 import scala.collection.immutable
 import scala.io.Source
 
-case class TrainParam(val inputDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/data/indexed_application_job_resume_2016_2017_10",
+case class TrainParam(val inputDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/data/indexed_application_job_resume_2016_2017_10_300d",
                       val outputDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/data/validation_predict",
                       val topK: Int = 500,
                       val dictDir: String = "/Users/guoqiong/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.300d.txt",

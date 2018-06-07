@@ -100,13 +100,22 @@ object DataProcess {
     //    println("itemCount= " + itemCount)
     //    println("appCount= " + appCount)
 
-    val applicationVectors = getGloveVectors(applicationCleaned, br)
+    val applicationVectors: DataFrame = getGloveVectors(applicationCleaned, br)
 
-    val (indexed, userDict, itemDict) = indexData(applicationVectors)
+    applicationVectors.persist()
+
+    val indexed = indexData(applicationVectors.select("userId", "itemId", "label"))
 
     indexed.cache()
-    userDict.cache()
-    itemDict.cache()
+
+    val userVectors = applicationVectors.join(indexed, Array("userId"))
+      .select("userId", "userIdIndex", "userVec").distinct()
+    val userDict = dedupe(userVectors, "userIdIndex", "userVec")
+
+    val itemVectors = applicationVectors.join(indexed, Array("itemId"))
+      .select("itemId", "itemIdIndex", "itemVec").distinct()
+    val itemDict = dedupe(itemVectors, "itemIdIndex", "itemVec")
+
 
     //    println("------------------------distribution in indexed -----------------------")
     //    indexed.groupBy("userIdIndex").count()
@@ -119,7 +128,7 @@ object DataProcess {
 
     indexed.printSchema()
 
-    applicationVectors.coalesce(16).write.mode(SaveMode.Overwrite).parquet(output + "/applicationVectors")
+   // applicationVectors.coalesce(16).write.mode(SaveMode.Overwrite).parquet(output + "/applicationVectors")
     indexed.coalesce(16).write.mode(SaveMode.Overwrite).parquet(output + "/indexed")
     userDict.write.mode(SaveMode.Overwrite).parquet(output + "/userDict")
     itemDict.write.mode(SaveMode.Overwrite).parquet(output + "/itemDict")
@@ -161,15 +170,10 @@ object DataProcess {
     val pipelineModel = pipeline.fit(applicationDF)
     val applicationIndexed: DataFrame = pipelineModel.transform(applicationDF)
 
-    val indexed = applicationIndexed.select("userIdIndex", "itemIdIndex", "label").distinct()
+    val indexed = applicationIndexed.select("userId", "itemId", "userIdIndex", "itemIdIndex", "label").distinct()
 
-    val userVectors = applicationIndexed.select("userId", "userIdIndex", "userVec").distinct()
-    val userDict = dedupe(userVectors, "userIdIndex", "userVec")
 
-    val itemVectors = applicationIndexed.select("itemId", "itemIdIndex", "itemVec").distinct()
-    val itemDict = dedupe(itemVectors, "itemIdIndex", "itemVec")
-
-    (indexed, userDict, itemDict)
+    indexed
   }
 
   //for each id, average the glove vectors
