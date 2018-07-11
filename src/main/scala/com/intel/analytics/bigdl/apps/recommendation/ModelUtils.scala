@@ -95,6 +95,36 @@ class ModelUtils(modelParam: ModelParam) {
     model
   }
 
+  def mlp3_300 = {
+    val model = Sequential()
+    model.add(Linear(600, 40))
+    model.add(ReLU())
+    model.add(Linear(40, 20))
+    model.add(ReLU())
+    model.add(Linear(20, 10))
+    model.add(ReLU())
+    model.add(Linear(10, 2))
+    model.add(ReLU())
+    model.add(LogSoftMax())
+    model
+  }
+
+  def mlp4_300 = {
+    val model = Sequential()
+    model.add(Linear(600, 100))
+    model.add(ReLU())
+    model.add(Linear(100, 40))
+    model.add(ReLU())
+    model.add(Linear(40, 20))
+    model.add(ReLU())
+    model.add(Linear(20, 10))
+    model.add(ReLU())
+    model.add(Linear(10, 2))
+    model.add(ReLU())
+    model.add(LogSoftMax())
+    model
+  }
+
   private def buildMlpModuleNode(linear: ModuleNode[Float], midLayerIndex: Int, midLayers: Array[Int]): ModuleNode[Float] = {
 
     if (midLayerIndex >= midLayers.length) {

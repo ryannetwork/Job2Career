@@ -35,9 +35,14 @@ object Evaluation {
     val falsePositive = evaluateDF.filter(col("prediction") === 1.0 && col("label") === 0.0).count()
     val trueNegative = evaluateDF.filter(col("prediction") === 0.0 && col("label") === 0.0).count()
     val falseNegative = evaluateDF.filter(col("prediction") === 0.0 && col("label") === 1.0).count()
-    val accuracy = (truePositive.toDouble + trueNegative.toDouble) / (trueNegative.toDouble + truePositive.toDouble + falseNegative.toDouble + falsePositive.toDouble)
-    val precision = truePositive.toDouble / (truePositive.toDouble + falsePositive.toDouble)
-    val recall = truePositive.toDouble / (truePositive.toDouble + falseNegative.toDouble)
+
+    val accuracy_denominator = trueNegative.toDouble + truePositive.toDouble + falseNegative.toDouble + falsePositive.toDouble
+    val precision_denominator = truePositive.toDouble + falsePositive.toDouble
+    val recall_denomiator = truePositive.toDouble + falseNegative.toDouble
+    // handle scenario when denominator became 0. Check log for more detailed info to debug
+    val accuracy = if (accuracy_denominator > 0) (truePositive.toDouble + trueNegative.toDouble) / accuracy_denominator else -1
+    val precision = if(precision_denominator > 0) truePositive.toDouble / precision_denominator else -1
+    val recall = if(recall_denomiator > 0) truePositive.toDouble / recall_denomiator else -1
 
     println("truePositive: " + truePositive)
     println("falsePositive: " + falsePositive)
