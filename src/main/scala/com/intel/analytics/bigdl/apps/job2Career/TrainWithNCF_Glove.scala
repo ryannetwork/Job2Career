@@ -105,7 +105,7 @@ object TrainWithNCF_Glove {
     val recModel = new ModelUtils(modelParam)
 
     // val model = recModel.ncf(userCount, itemCount)
-    val model = recModel.mlp3
+    val model = recModel.mlp3_300
 
     val criterion = ClassNLLCriterion()
 
