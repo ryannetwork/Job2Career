@@ -69,7 +69,7 @@ object TrainWithNCF_Glove {
 
     Engine.init
     val input = param.inputDir
-    val modelPath = param.inputDir + "/model"
+    val modelPath = param.inputDir + "/model/all"
 
     val indexed = spark.read.parquet(input + "/indexed")
     val userDict = spark.read.parquet(input + "/userDict")
@@ -105,7 +105,7 @@ object TrainWithNCF_Glove {
     val recModel = new ModelUtils(modelParam)
 
     // val model = recModel.ncf(userCount, itemCount)
-    val model = recModel.mlp3_300
+    val model = recModel.mlp3
 
     val criterion = ClassNLLCriterion()
 
@@ -141,7 +141,7 @@ object TrainWithNCF_Glove {
 
     println("training time(s):  " + toDecimal(3)(trainingTime))
     println("prediction time(s):  " + toDecimal(3)(predictionTime))
-    println("evaluation time(s):  " + toDecimal(3)(predictionTime))
+    println("evaluation time(s):  " + toDecimal(3)(evaluationTime))
 
     processGoldendata(spark, param, modelPath)
     println("stop")
