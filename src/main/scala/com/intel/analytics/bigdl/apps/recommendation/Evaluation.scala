@@ -57,7 +57,9 @@ object Evaluation {
     val modelAUPR = evaluation.setMetricName("areaUnderPR").evaluate(evaluatLabels)
     println("modelAUROC: " + modelAUROC)
     println("modelAUPR: " + modelAUPR)
-    Seq(accuracy, precision, recall, modelAUROC, modelAUPR).map(x => toDecimal(3)(x))
+
+    Seq(accuracy, precision, recall, modelAUROC, modelAUPR)
+    //Seq(accuracy, precision, recall, modelAUROC, modelAUPR).map(x => toDecimal(3)(x))
 
   }
 

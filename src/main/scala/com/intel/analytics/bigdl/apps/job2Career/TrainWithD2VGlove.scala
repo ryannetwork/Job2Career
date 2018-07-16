@@ -23,7 +23,8 @@ case class TrainParam(val inputDir: String = "/Users/guoqiong/intelWork/projects
                       val nEpochs: Int = 10,
                       val vectDim: Int = 300,
                       val learningRate: Double = 0.005,
-                      val learningRateDecay: Double = 1e-6)
+                      val learningRateDecay: Double = 1e-6,
+                      val Kclusters: Int = 3)
 
 object TrainWithD2VGlove {
 

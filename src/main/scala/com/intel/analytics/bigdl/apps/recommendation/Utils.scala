@@ -58,9 +58,9 @@ object Utils {
 
     import indexed.sqlContext.implicits._
 
-    val negativeDF = indexedDF.rdd.mapPartitionsWithIndex( (index, it) => {
+    val negativeDF = indexedDF.rdd.mapPartitionsWithIndex((index, it) => {
       val ran = new Random(index)
-      it.flatMap( row => {
+      it.flatMap(row => {
         val uid = row.getAs[Double](0)
         val iid = (1 to amplifier).map(x => Math.max(ran.nextInt(itemCount), 1))
         iid.map(x => (uid, x))
@@ -90,18 +90,18 @@ object Utils {
     val ls = 0 to numberRecords.toInt
 
     val negativeSampleDF = sc.parallelize(ls, sc.defaultParallelism)
-        .mapPartitionsWithIndex((index,it) =>{
+      .mapPartitionsWithIndex((index, it) => {
 
-          val ran1 = new Random(index)
-          val ran2 = new Random(index)
+        val ran1 = new Random(index)
+        val ran2 = new Random(index)
 
-          it.map( x=> {
-            val uid = Math.max(ran1.nextInt(userCount), 1)
-            val iid = Math.max(ran2.nextInt(itemCount), 1)
-            (uid, iid)
-          })
+        it.map(x => {
+          val uid = Math.max(ran1.nextInt(userCount), 1)
+          val iid = Math.max(ran2.nextInt(itemCount), 1)
+          (uid, iid)
+        })
 
-        }).filter(x => !sampleDict.contains(x._1 + "," + x._2)).distinct()
+      }).filter(x => !sampleDict.contains(x._1 + "," + x._2)).distinct()
       .map(x => (x._1, x._2, 0.0))
       .toDF("userIdIndex", "itemIdIndex", "label")
 
@@ -143,6 +143,22 @@ object Utils {
     }.toDF().orderBy(rand()).cache()
   }
 
+  //df to sample
+  def df2Sample(df: DataFrame): RDD[Sample[Float]] = {
+    val schema = df.schema
+      require(schema.fieldNames.contains("features"), s"Column features should exist")
+    require(schema.fieldNames.contains("label"), s"Column label should exist")
+    val rddOfSample = df.select("features", "label").rdd.map(row => {
+
+      val featuresArr: Array[Float] = row.getAs[mutable.WrappedArray[Double]](0).toArray.map(x=> x.toFloat)
+      val label = row.getAs[Double](1).toFloat
+
+      val feature: Tensor[Float] = Tensor(featuresArr,Array(1, featuresArr.length))
+      Sample(feature, label)
+    })
+    rddOfSample
+  }
+
 
   def getFeaturesLP(trainDF: DataFrame): DataFrame = {
 
@@ -152,11 +168,11 @@ object Utils {
       val vec = userVec ++ itemVec
       val vect: Seq[Double] = vec.map(_.toDouble)
       val f: linalg.Vector = Vectors.dense(vect.toArray)
- //     require(f.toArray.size == 100)
+      //     require(f.toArray.size == 100)
       f.toArray
     })
 
-    trainDF.withColumn("features", featurizerUdf(col("userVec"), col("itemVec")))
+    trainDF.withColumn("features", featurizerUdf(col("userVec"), col("itemVec"))).cache()
   }
 
   val toZero = udf { d: Double =>
