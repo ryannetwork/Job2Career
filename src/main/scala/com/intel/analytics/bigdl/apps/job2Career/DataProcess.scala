@@ -11,6 +11,7 @@ import scala.io.Source
 import com.intel.analytics.bigdl.apps.job2Career.DataProcess._
 import com.intel.analytics.bigdl.apps.job2Career.TrainWithD2VGlove.{doc2VecFromWordMap, loadWordVecMap, run}
 import com.intel.analytics.bigdl.apps.recommendation.Utils._
+import com.intel.analytics.zoo.common.NNContext
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.ml.linalg.Vectors
 import org.apache.spark.{SparkConf, SparkContext}
@@ -32,13 +33,13 @@ object DataProcess {
   def main(args: Array[String]): Unit = {
 
     val defaultParams = DataProcessParams()
+
     Logger.getLogger("org").setLevel(Level.ERROR)
-
-    val conf = new SparkConf().setAppName("app")
-
-    val spark = SparkSession.builder().config(conf).getOrCreate()
-    spark.sparkContext.setLogLevel("ERROR")
-    spark.sqlContext.setConf("spark.sql.shuffle.partitions", "1000")
+    val conf = new SparkConf()
+    conf.setAppName("jobs2career").set("spark.sql.crossJoin.enabled", "true")
+    val sc = NNContext.initNNContext(conf)
+    val sqlContext = SQLContext.getOrCreate(sc)
+    sqlContext.setConf("spark.sql.shuffle.partitions", "1000")
 
     val parser = new OptionParser[DataProcessParams]("BigDL Example") {
       opt[String]("inputDir")
@@ -60,21 +61,21 @@ object DataProcess {
 
     parser.parse(args, defaultParams).map {
       params =>
-        run(spark, params)
+        run(sqlContext, params)
     } getOrElse {
       System.exit(1)
     }
 
   }
 
-  def run(spark: SparkSession, para: DataProcessParams): Unit = {
+  def run(sQLContext: SQLContext, para: DataProcessParams): Unit = {
 
     val dataPath = para.inputDir
     val lookupDict = para.dictDir
     val dict: Map[String, Array[Float]] = loadWordVecMap(lookupDict)
-    val br: Broadcast[Map[String, Array[Float]]] = spark.sparkContext.broadcast(dict)
+    val br: Broadcast[Map[String, Array[Float]]] = sQLContext.sparkContext.broadcast(dict)
 
-    val applicationDF = spark.read.parquet(dataPath + "/resume_search/application_job_resume_2016_2017_10.parquet")
+    val applicationDF = sQLContext.read.parquet(dataPath + "/resume_search/application_job_resume_2016_2017_10.parquet")
       .select("job_id", "jobs_description", "resume_url", "resume.resume.normalizedBody", "new_application")
       .withColumn("label", applicationStatusUdf(col("new_application")))
       .withColumn("userId", createResumeId(col("resume_url")))
@@ -128,7 +129,7 @@ object DataProcess {
 
     indexed.printSchema()
 
-   // applicationVectors.coalesce(16).write.mode(SaveMode.Overwrite).parquet(output + "/applicationVectors")
+    // applicationVectors.coalesce(16).write.mode(SaveMode.Overwrite).parquet(output + "/applicationVectors")
     indexed.coalesce(16).write.mode(SaveMode.Overwrite).parquet(output + "/indexed")
     userDict.write.mode(SaveMode.Overwrite).parquet(output + "/userDict")
     itemDict.write.mode(SaveMode.Overwrite).parquet(output + "/itemDict")

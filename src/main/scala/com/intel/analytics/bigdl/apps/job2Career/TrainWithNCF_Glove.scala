@@ -7,12 +7,13 @@ import com.intel.analytics.bigdl.nn._
 import com.intel.analytics.bigdl.optim.Adam
 import com.intel.analytics.bigdl.tensor.TensorNumericMath.TensorNumeric.NumericFloat
 import com.intel.analytics.bigdl.utils.Engine
+import com.intel.analytics.zoo.common.NNContext
 import org.apache.log4j.{Level, Logger}
-import org.apache.spark.SparkContext
+import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.ml.{DLClassifier, DLClassifierModel, DLEstimator, DLModel}
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.{DataFrame, Row, SaveMode, SparkSession}
+import org.apache.spark.sql._
 import scopt.OptionParser
 
 object TrainWithNCF_Glove {
@@ -22,11 +23,12 @@ object TrainWithNCF_Glove {
     val defaultParams = TrainParam()
 
     Logger.getLogger("org").setLevel(Level.ERROR)
-    val conf = Engine.createSparkConf().setAppName("app")
-    val spark = SparkSession.builder().config(conf).getOrCreate()
-    //spark.sparkContext.setLogLevel("WARN")
+    val conf = new SparkConf()
+    conf.setAppName("jobs2career").set("spark.sql.crossJoin.enabled", "true")
+    val sc = NNContext.initNNContext(conf)
+    val sqlContext = SQLContext.getOrCreate(sc)
 
-    val parser = new OptionParser[TrainParam]("BigDL Example") {
+    val parser = new OptionParser[TrainParam]("jobs2career") {
       opt[String]("inputDir")
         .text(s"inputDir")
         .action((x, c) => c.copy(inputDir = x))
@@ -59,21 +61,20 @@ object TrainWithNCF_Glove {
 
     parser.parse(args, defaultParams).map {
       params =>
-        run(spark: SparkSession, params)
+        run(sqlContext, params)
     } getOrElse {
       System.exit(1)
     }
   }
 
-  def run(spark: SparkSession, param: TrainParam): Unit = {
+  def run(sqlContext: SQLContext, param: TrainParam): Unit = {
 
-    Engine.init
     val input = param.inputDir
     val modelPath = param.inputDir + "/model/all"
 
-    val indexed = spark.read.parquet(input + "/indexed")
-    val userDict = spark.read.parquet(input + "/userDict")
-    val itemDict = spark.read.parquet(input + "/itemDict")
+    val indexed = sqlContext.read.parquet(input + "/indexed")
+    val userDict = sqlContext.read.parquet(input + "/userDict")
+    val itemDict = sqlContext.read.parquet(input + "/itemDict")
 
     val splitNum = (userDict.count() * 0.8).toInt
 
@@ -143,18 +144,18 @@ object TrainWithNCF_Glove {
     println("prediction time(s):  " + toDecimal(3)(predictionTime))
     println("evaluation time(s):  " + toDecimal(3)(evaluationTime))
 
-    processGoldendata(spark, param, modelPath)
+    processGoldendata(sqlContext, param, modelPath)
     println("stop")
 
   }
 
-  def processGoldendata(spark: SparkSession, para: TrainParam, modelPath: String) = {
+  def processGoldendata(sqlContext: SQLContext, para: TrainParam, modelPath: String) = {
 
     val loadedModel = Module.loadModule(modelPath, null)
     val dlModel = new DLClassifierModel[Float](loadedModel, Array(2 * para.vectDim))
       .setBatchSize(para.batchSize)
 
-    val validationIn = spark.read.parquet(para.valDir)
+    val validationIn = sqlContext.read.parquet(para.valDir)
     // validationIn.printSchema()
     val validationDF = validationIn
       .select("resume_id", "job_id", "resume.resume.normalizedBody", "description", "apply_flag")
@@ -169,7 +170,7 @@ object TrainWithNCF_Glove {
         && col("itemId").isNotNull && col("label").isNotNull)
 
     val dict: Map[String, Array[Float]] = loadWordVecMap(para.dictDir)
-    val br: Broadcast[Map[String, Array[Float]]] = spark.sparkContext.broadcast(dict)
+    val br: Broadcast[Map[String, Array[Float]]] = sqlContext.sparkContext.broadcast(dict)
 
     val validationCleaned = DataProcess.cleanData(validationDF, br.value)
     val validationVectors = DataProcess.getGloveVectors(validationCleaned, br)
