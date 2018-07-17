@@ -6,12 +6,11 @@ import com.intel.analytics.bigdl.apps.recommendation.{Evaluation, ModelParam, Mo
 import com.intel.analytics.bigdl.nn._
 import com.intel.analytics.bigdl.optim.Adam
 import com.intel.analytics.bigdl.tensor.TensorNumericMath.TensorNumeric.NumericFloat
-import com.intel.analytics.bigdl.utils.Engine
 import com.intel.analytics.zoo.common.NNContext
+import com.intel.analytics.zoo.pipeline.nnframes.{NNClassifier, NNClassifierModel, NNEstimator, NNModel}
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.broadcast.Broadcast
-import org.apache.spark.ml.{DLClassifier, DLClassifierModel, DLEstimator, DLModel}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql._
 import scopt.OptionParser
@@ -110,14 +109,14 @@ object TrainWithNCF_Glove {
 
     val criterion = ClassNLLCriterion()
 
-    val dlc: DLEstimator[Float] = new DLClassifier(model, criterion, Array(2 * param.vectDim))
+    val dlc: NNEstimator[Float] = NNClassifier[Float](model, criterion, Array(2 * param.vectDim))
       .setBatchSize(param.batchSize)
       .setOptimMethod(new Adam())
       .setLearningRate(param.learningRate)
       .setLearningRateDecay(param.learningRateDecay)
       .setMaxEpoch(param.nEpochs)
 
-    val dlModel: DLModel[Float] = dlc.fit(trainingDF)
+    val dlModel: NNModel[Float] = dlc.fit(trainingDF)
 
     println(dlModel.model.getParameters())
     dlModel.model.saveModule(modelPath, null, true)
@@ -152,7 +151,7 @@ object TrainWithNCF_Glove {
   def processGoldendata(sqlContext: SQLContext, para: TrainParam, modelPath: String) = {
 
     val loadedModel = Module.loadModule(modelPath, null)
-    val dlModel = new DLClassifierModel[Float](loadedModel, Array(2 * para.vectDim))
+    val dlModel =  NNClassifierModel[Float](loadedModel, Array(2 * para.vectDim))
       .setBatchSize(para.batchSize)
 
     val validationIn = sqlContext.read.parquet(para.valDir)
