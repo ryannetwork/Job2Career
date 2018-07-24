@@ -1,363 +1,274 @@
 package com.intel.analytics.bigdl.apps.job2Career
 
 import com.intel.analytics.bigdl.apps.job2Career.TrainWithD2VGlove.loadWordVecMap
+import com.intel.analytics.bigdl.apps.job2Career.Utils.{AppParams, KmeansParam, NCFParam}
+import com.intel.analytics.bigdl.apps.recommendation.Evaluation.evaluatePredictions
 import com.intel.analytics.bigdl.apps.recommendation.Utils._
-import com.intel.analytics.bigdl.apps.recommendation.{Evaluation, ModelParam, ModelUtils}
+import com.intel.analytics.bigdl.apps.recommendation.{Evaluation, ModelParam, ModelUtils, NCFJob2Career}
+import com.intel.analytics.bigdl.dataset.Sample
 import com.intel.analytics.bigdl.nn._
-import com.intel.analytics.bigdl.optim.Adam
+import com.intel.analytics.bigdl.optim.{Adam, Optimizer, Trigger}
 import com.intel.analytics.bigdl.tensor.TensorNumericMath.TensorNumeric.NumericFloat
 import com.intel.analytics.zoo.common.NNContext
-import com.intel.analytics.zoo.pipeline.nnframes.{NNClassifier, NNClassifierModel, NNEstimator, NNModel}
-import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.Path
+import com.intel.analytics.zoo.models.common.ZooModel
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.SparkConf
 import org.apache.spark.broadcast.Broadcast
-import org.apache.spark.ml._
+import org.apache.spark.ml.Pipeline
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql._
-import scopt.OptionParser
-import org.apache.spark.mllib.clustering.{KMeans, KMeansModel}
-import org.apache.spark.mllib.linalg
-import org.apache.spark.mllib.linalg.Vectors
+import org.apache.spark.sql.{DataFrame, _}
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.types.IntegerType
-import org.apache.spark.ml.clustering.{KMeans => MLKmeans, KMeansModel => MLKmeansModel}
-import org.apache.spark.ml.linalg.{Vectors => MLVectors}
+import org.apache.spark.ml.clustering.{KMeans, KMeansModel}
 import org.apache.spark.ml.evaluation.ClusteringEvaluator
+import org.apache.spark.ml.feature.StringIndexer
+import org.apache.spark.storage.StorageLevel
 
 object TrainWithEnsambleNCF_Glove {
 
+  val logger = Logger.getLogger(getClass)
+  Logger.getLogger("org").setLevel(Level.ERROR)
+
   def main(args: Array[String]): Unit = {
 
-    val defaultParams = TrainParam(
-      inputDir = "/Users/guoqiong/intelWork/projects/jobs2Career/data/indexed_application_job_resume_2016_2017_10",
-      outputDir = "/Users/guoqiong/intelWork/projects/jobs2Career/data/validation_predict",
-      dictDir = "/Users/guoqiong/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.50d.txt",
-      valDir = "/Users/guoqiong/intelWork/projects/jobs2Career/data/validation/part*",
-      batchSize = 8000,
-      nEpochs = 10,
-      vectDim = 50,
-      learningRate = 0.005,
-      learningRateDecay = 1e-6,
-      Kclusters = 3)
-
-    Logger.getLogger("org").setLevel(Level.ERROR)
     val conf = new SparkConf()
     conf.setAppName("jobs2career").set("spark.sql.crossJoin.enabled", "true")
     val sc = NNContext.initNNContext(conf)
     val sqlContext = SQLContext.getOrCreate(sc)
-
-    val parser = new OptionParser[TrainParam]("jobs2career") {
-      opt[String]("inputDir")
-        .text(s"inputDir")
-        .action((x, c) => c.copy(inputDir = x))
-      opt[String]("outputDir")
-        .text(s"outputDir")
-        .action((x, c) => c.copy(outputDir = x))
-      opt[String]("dictDir")
-        .text(s"wordVec data")
-        .action((x, c) => c.copy(dictDir = x))
-      opt[String]("valDir")
-        .text(s"valDir data")
-        .action((x, c) => c.copy(valDir = x))
-      opt[Int]('b', "batchSize")
-        .text(s"batchSize")
-        .action((x, c) => c.copy(batchSize = x.toInt))
-      opt[Int]('e', "nEpochs")
-        .text("epoch numbers")
-        .action((x, c) => c.copy(nEpochs = x))
-      opt[Int]('f', "vectDim")
-        .text("dimension of glove vectors")
-        .action((x, c) => c.copy(vectDim = x))
-      opt[Double]('l', "learningRate")
-        .text("learning rate")
-        .action((x, c) => c.copy(learningRate = x.toDouble))
-      opt[Double]('d', "learningRateDecay")
-        .text("learning rate decay")
-        .action((x, c) => c.copy(learningRateDecay = x.toDouble))
-      opt[Double]('K', "Kclusters")
-        .text("Kclusters")
-        .action((x, c) => c.copy(Kclusters = x.toInt))
-
-    }
-
-    parser.parse(args, defaultParams).map {
-      params =>
-        run(sqlContext: SQLContext, params)
+    Utils.trainParser.parse(args, Utils.AppParams()).map { param =>
+      run(sqlContext: SQLContext, param)
     } getOrElse {
       System.exit(1)
     }
   }
 
-  def run(sqlContext: SQLContext, param: TrainParam): Unit = {
+  def run(sqlContext: SQLContext, param: AppParams): Unit = {
 
-    val input: String = param.inputDir
-    val ncfModelPath = param.inputDir + "/ncf"
-
+    val input: String = param.dataPathParams.preprocessedDir
+    val indexed = sqlContext.read.parquet(input + "/indexed").drop("itemIdOrg").drop("userIdOrg")
     val userDict = sqlContext.read.parquet(input + "/userDict")
     val itemDict = sqlContext.read.parquet(input + "/itemDict")
 
-    val numClusters = param.Kclusters
-    // val kmeanUserDict = kmeansProcessRDD(userDict, "userVec", param.inputDir + "/modelKmean", true, numClusters).persist()
-    //kmeanUserDict.write.mode(SaveMode.Overwrite).parquet(param.inputDir + "/userDictWithKRDD")
+    val indexedAll = DataProcess.negativeJoin(indexed, itemDict, userDict, param.negativeK)
+      .withColumn("label", add1(col("label")))
+    indexedAll.write.mode(SaveMode.Overwrite).parquet(param.dataPathParams.preprocessedDir + "/indexedNeg" + param.negativeK)
+    //  val indexedAll = sqlContext.read.parquet(param.dataPathParams.preprocessedDir + "/indexedNeg" + param.negativeK)
 
-    val kmeanUserDict = sqlContext.read.parquet(param.inputDir + "/userDictWithKRDD")
+    def processNcfWithKmeans(indexed: DataFrame) = {
 
-    println("kmean kth cluster num distribution")
-    kmeanUserDict.select("kth").groupBy("kth").count().show()
-    val indexedWithNegative = sqlContext.read.parquet(input + "/indexedNeg1")
+      val kmeanUserDict = processKmeans(userDict, param.kmeansParams).persist()
+      kmeanUserDict.write.mode(SaveMode.Overwrite).parquet(param.dataPathParams.modelOutput + "/kmeans")
+      // val kmeanUserDict = sqlContext.read.parquet(param.dataPathParams.modelOutput + "/kmeans")
 
-    (0 to numClusters - 1).map(kth => {
+      (0 to param.kmeansParams.kClusters - 1).map(kth => {
 
-      val userDictKth = kmeanUserDict.filter(s"kth = $kth")
+        val userDictKth = kmeanUserDict.filter(s"kth = $kth")
 
-      val indexedKth = indexedWithNegative.join(userDictKth.select("userIdIndex"), Seq("userIdIndex")).cache()
+        val indexedKth = indexed.join(userDictKth.select("userId"), Seq("userId")).persist(StorageLevel.DISK_ONLY)
 
-      println("--------------------------------------------------")
-      println(kth + " cluster data distribution: ")
-      indexedKth.groupBy("label").count().show()
+        println(kth + " cluster data distribution: ")
+        indexedKth.groupBy("label").count().show()
 
-      trainNCF(indexedKth, param, ncfModelPath + "/" + kth)
-    })
+        processNcf(kth, indexedKth)
+        indexedKth.unpersist()
+      })
+      kmeanUserDict.unpersist()
+    }
 
-    kmeanUserDict.unpersist()
+    def processNcf(kth: Int, indexed: DataFrame) = {
 
-    // processGoldendata(spark, param, modelPath, numClusters)
-  }
+      val Array(trainDF, validationDF) = indexed.randomSplit(Array(0.8, 0.2), seed = 1L)
+      val trainpairFeatureRdds = assemblyFeature(trainDF)
 
+      val trainRdds: RDD[Sample[Float]] = trainpairFeatureRdds.map(x => x.sample)
 
-  def kmeansProcessDF(dataset: DataFrame,
-                      vectorCol: String,
-                      kmeanPath: String,
-                      isTrain: Boolean = true,
-                      numClusters: Int = 2,
-                      numIterations: Int = 20): DataFrame = {
-
-    val array2vec = udf((arr: scala.collection.mutable.WrappedArray[Float]) => {
-      val d = arr.map(x => x.toDouble)
-      MLVectors.dense(d.toArray)
-    })
-
-    val dataml = dataset.withColumn("features", array2vec(col("userVec")))
-      .drop("userVec")
-      .withColumnRenamed("features", "userVec")
-    val kmeans = new MLKmeans()
-      .setK(numClusters)
-      .setSeed(1L)
-      .setInitMode("k-means||")
-      .setMaxIter(numIterations)
-      .setFeaturesCol("userVec")
-      .setPredictionCol("kth")
-
-    // val clusters: MLKmeansModel = kmeans.fit(dataset)
-
-    val model: MLKmeansModel = if (isTrain) {
-      require(kmeanPath != null, "model path can't be null")
-      val trained: MLKmeansModel = kmeans.fit(dataml)
-
-      val p = new Path(kmeanPath)
-      val fs = p.getFileSystem(new Configuration())
-      if (fs.exists(p)) {
-        fs.delete(p, true)
+      val time1 = System.nanoTime()
+      val ncfPath = if (kth >= 0) param.ncfParams.modelPath + kth else param.ncfParams.modelPath
+      val model = if (param.ncfParams.isTrain) {
+        trainNcf(param.ncfParams, trainRdds, ncfPath)
+      } else {
+        val loadedModel = ZooModel.loadModel(ncfPath, null).asInstanceOf[NCFJob2Career]
+        println(loadedModel.getParameters())
+        loadedModel
       }
 
+      val predictions = ncfPredict(model, sqlContext, validationDF)
+      val metrics = evaluatePredictions(predictions.join(indexedAll, Array("userId", "itemId")))
+      logger.info("evaluation for validation dataset")
+      logger.info("hyperparameters: " + param)
+      logger.info(metrics.mkString("|"))
+    }
+
+    val mode = param.mode
+    mode match {
+      case Utils.Mode_NCFWithKeans =>
+        processNcfWithKmeans(indexedAll)
+      case Utils.Mode_NCF =>
+        processNcf(-1, indexedAll)
+      case Utils.Mode_Data =>
+        DataProcess.preprocess(sqlContext, param)
+      case _ =>
+        throw new IllegalArgumentException(s"mode $mode not supported")
+    }
+
+    evaluateWithGoldenData(sqlContext, param)
+  }
+
+  def processKmeans(dataset: DataFrame,
+                    param: KmeansParam): DataFrame = {
+
+    val vectorCol = param.featureVec
+    val dataml = dataset.withColumn("kmeansFeatures", array2vec(col(vectorCol)))
+    val kmeans = new KMeans()
+      .setK(param.kClusters)
+      .setSeed(1L)
+      .setInitMode("k-means||")
+      .setMaxIter(param.numIterations)
+      .setFeaturesCol("kmeansFeatures")
+      .setPredictionCol("kth")
+
+    val kmeanPath = param.modelPath
+    val model: KMeansModel = if (param.isTrain) {
+      require(kmeanPath != null, "model path can't be null")
+      require(dataml.schema.fieldNames.contains(vectorCol), vectorCol + " is needed to train a kmeans model")
+
+      val trained: KMeansModel = kmeans.fit(dataml)
+      deleteFile(kmeanPath)
       trained.save(kmeanPath)
       trained
     } else {
-      MLKmeansModel.load(kmeanPath)
+      require(kmeanPath != null, "model path can't be null")
+      KMeansModel.load(kmeanPath)
     }
 
     val predictions = model.transform(dataml)
     val evaluator = new ClusteringEvaluator()
-      .setFeaturesCol("userVec").setPredictionCol("kth")
+      .setFeaturesCol("kmeansFeatures").setPredictionCol("kth")
 
     val silhouette = evaluator.evaluate(predictions)
     println(s"Silhouette with squared euclidean distance = $silhouette")
 
-    // Shows the result.
-    println("Cluster Centers: ")
-    model.clusterCenters.foreach(println)
+    predictions.drop("kmeansFeatures")
+  }
+
+  def trainNcf(param: NCFParam, trainRdds: RDD[Sample[Float]], modelPath: String) = {
+
+    val modelMlp = NCFJob2Career(100, 100,
+      numClasses = 2,
+      userEmbed = 50,
+      itemEmbed = 50,
+      hiddenLayers = Array(40, 20, 10),
+      includeMF = false,
+      trainEmbed = false)
+
+    val optimizer = Optimizer(
+      model = modelMlp,
+      sampleRDD = trainRdds,
+      criterion = ClassNLLCriterion[Float](),
+      batchSize = param.batchSize)
+
+    val optimMethod = new Adam[Float](
+      learningRate = param.learningRate,
+      learningRateDecay = param.learningRateDecay)
+
+    optimizer
+      .setOptimMethod(optimMethod)
+      .setEndWhen(Trigger.maxEpoch(param.nEpochs))
+      .optimize()
+
+    println(modelMlp.getParameters())
+    modelMlp.saveModel(modelPath, null, true)
+
+    modelMlp
+  }
+
+  def ncfPredict(model: NCFJob2Career,
+                 sqlContext: SQLContext,
+                 validationDF: DataFrame) = {
+
+    val validationpairFeatureRdds = assemblyFeature(validationDF)
+    val pairPredictions = model.predictUserItemPair(validationpairFeatureRdds)
+    val predictions = sqlContext.createDataFrame(pairPredictions).toDF()
 
     predictions
   }
 
-  def kmeansProcessRDD(dataFrame: DataFrame,
-                       vectorCol: String,
-                       kmeanPath: String,
-                       isTrain: Boolean = true,
-                       numClusters: Int = 2,
-                       numIterations: Int = 20): DataFrame = {
+  def ncfWithKmeansPredict(param: AppParams, sqlContext: SQLContext, validationDF: DataFrame) = {
+    val kmeansModel = KMeansModel.load(param.kmeansParams.modelPath)
+    val vectorCol = param.kmeansParams.featureVec
+    val validationml = validationDF
+      .withColumn("kmeansFeatures", array2vec(col(vectorCol)))
 
-    val dataRdd: RDD[Row] = dataFrame.rdd
+    val validationDFWithK = kmeansModel.transform(validationml).drop("kmeansFeatures")
 
-    val trainData: RDD[linalg.Vector] = dataRdd.map(row => {
-      val d = row.getAs[scala.collection.mutable.WrappedArray[Float]](vectorCol).map(x => x.toDouble)
-      Vectors.dense(d.toArray)
-    })
+    val predictionsAll: DataFrame = (0 to param.kmeansParams.kClusters - 1).map(kth => {
 
-    val sc = dataFrame.sqlContext.sparkContext
+      val validationDFKth = validationDFWithK.filter(s"kth = $kth")
+      val ncfPath = if (kth >= 0) param.ncfParams.modelPath + kth else param.ncfParams.modelPath
+      val ncfModelKth = ZooModel.loadModel(ncfPath, null).asInstanceOf[NCFJob2Career]
+      val predictionsKth = ncfPredict(ncfModelKth, sqlContext, validationDFKth)
+      predictionsKth
+    }).reduceLeft((a, b) => a.union(b))
 
-    val model: KMeansModel = if (isTrain) {
-      require(kmeanPath != null, "model path can't be null")
-      val cluster = KMeans.train(trainData, numClusters, numIterations)
-
-      val p = new Path(kmeanPath)
-      val fs = p.getFileSystem(new Configuration())
-      if (fs.exists(p)) {
-        fs.delete(p, true)
-      }
-
-      cluster.save(sc, kmeanPath)
-      cluster
-    } else {
-      KMeansModel.load(sc, kmeanPath)
-    }
-
-    // Evaluate clustering by computing Within Set Sum of Squared Errors
-
-    val WSSSE = model.computeCost(trainData)
-    println("WSSE:" + WSSSE)
-
-    val clusterRdd = model.predict(trainData)
-
-    val finalSchema = dataFrame.schema.add("kth", IntegerType)
-
-    val predictions = dataFrame.sqlContext.createDataFrame(dataRdd.zip(clusterRdd)
-      .map(x => Row.fromSeq(x._1.toSeq ++ Array[Any](x._2))), finalSchema)
-
-    predictions
+    predictionsAll.join(validationDFWithK, Array("userId", "itemId"))
   }
 
-  def trainNCF(indexedWithNegative: DataFrame, param: TrainParam, modelPath: String, isTrain: Boolean = true) = {
+  def getGoldenDF(sqlContext: SQLContext, param: AppParams) = {
+    val validationIn = sqlContext.read.parquet(param.dataPathParams.evaluateDir)
 
-    val Array(trainWithNegative, validationWithNegative) = indexedWithNegative.randomSplit(Array(0.8, 0.2), 1L)
-
-    println("---------distribution of label in NCF for training and testing ----------------")
-    val trainingDF: DataFrame = getFeaturesLP(trainWithNegative)
-    val validationDF = getFeaturesLP(validationWithNegative)
-
-    trainingDF.groupBy("label").count().show()
-    trainingDF.persist()
-    validationDF.groupBy("label").count().show()
-    validationDF.persist()
-
-    val time1 = System.nanoTime()
-    val modelParam = ModelParam(userEmbed = 20,
-      itemEmbed = 20,
-      midLayers = Array(40, 20),
-      labels = 2)
-
-    val model = if (isTrain) {
-      val recModel = new ModelUtils(modelParam)
-
-      // val model = recModel.ncf(userCount, itemCount)
-      val model = recModel.mlp3
-
-      val criterion = ClassNLLCriterion()
-
-      val dlc: NNEstimator[Float] = NNClassifier[Float](model, criterion, Array(2 * param.vectDim))
-        .setBatchSize(param.batchSize)
-        .setOptimMethod(new Adam())
-        .setLearningRate(param.learningRate)
-        .setLearningRateDecay(param.learningRateDecay)
-        .setMaxEpoch(param.nEpochs)
-
-      val dlModel: NNModel[Float] = dlc.fit(trainingDF)
-
-      println(dlModel.model.getParameters())
-      dlModel.model.saveModule(modelPath, null, true)
-
-      dlModel
-    } else {
-
-      val loadedModel = Module.loadModule(modelPath, null)
-      println(loadedModel.getParameters())
-      val dlModel = NNClassifierModel[Float](loadedModel, Array(2 * param.vectDim))
-        .setBatchSize(param.batchSize)
-
-      dlModel
-    }
-
-    val time2 = System.nanoTime()
-
-    val predictions: DataFrame = model.transform(trainingDF).cache()
-
-    predictions.show()
-    val time3 = System.nanoTime()
-
-    println(predictions.count())
-    println("validation results:" + modelPath)
-    Evaluation.evaluate2(predictions.withColumn("label", toZero(col("label")))
-      .withColumn("prediction", toZero(col("prediction"))))
-
-    val time4 = System.nanoTime()
-
-    val trainingTime = (time2 - time1) * (1e-9)
-    val predictionTime = (time3 - time2) * (1e-9)
-    val evaluationTime = (time4 - time3) * (1e-9)
-
-    println("training time(s):  " + toDecimal(3)(trainingTime))
-    println("prediction time(s):  " + toDecimal(3)(predictionTime))
-    println("evaluation time(s):  " + toDecimal(3)(predictionTime))
-  }
-
-
-  def processGoldendata(sqlContext: SQLContext, para: TrainParam, modelPath: String, numClusters: Int = 2) = {
-
-    val validationIn = sqlContext.read.parquet(para.valDir)
-    // validationIn.printSchema()
-    val validationDF = validationIn
+    val validationCleaned1 = validationIn
       .select("resume_id", "job_id", "resume.resume.normalizedBody", "description", "apply_flag")
       .withColumn("label", add1(col("apply_flag")))
       .withColumnRenamed("resume.resume.normalizedBody", "normalizedBody")
-      .withColumnRenamed("resume_id", "userId")
       .withColumnRenamed("normalizedBody", "userDoc")
       .withColumnRenamed("description", "itemDoc")
+      .select(col("resume_id"), col("job_id"), col("userDoc"), col("itemDoc"), col("label"))
+      .filter(col("itemDoc").isNotNull && col("userDoc").isNotNull && col("resume_id").isNotNull
+        && col("job_id").isNotNull && col("label").isNotNull)
       .withColumnRenamed("job_id", "itemId")
-      .select("userId", "itemId", "userDoc", "itemDoc", "label")
-      .filter(col("itemDoc").isNotNull && col("userDoc").isNotNull && col("userId").isNotNull
-        && col("itemId").isNotNull && col("label").isNotNull)
+      .withColumnRenamed("resume_id", "userId")
 
-    val dict: Map[String, Array[Float]] = loadWordVecMap(para.dictDir)
+    val dict: Map[String, Array[Float]] = loadWordVecMap(param.gloveParams.dictDir)
     val br: Broadcast[Map[String, Array[Float]]] = sqlContext.sparkContext.broadcast(dict)
 
-    val validationCleaned = DataProcess.cleanData(validationDF, br.value)
-    val validationVectors: DataFrame = DataProcess.getGloveVectors(validationCleaned, br)
+    val validationCleaned = DataProcess.cleanData(validationCleaned1, br.value)
+      .withColumnRenamed("itemId", "job_id")
+      .withColumnRenamed("userId", "resume_id")
 
-    val validationVectorsCluster = kmeansProcessRDD(validationVectors, "userVec", para.inputDir + "/modelKmean", false, numClusters).persist()
+    val validationVec = DataProcess.getGloveVectors(validationCleaned, br)
 
-    val predictorDFS = (0 to numClusters - 1).map(kth => {
+    val si1 = new StringIndexer().setInputCol("resume_id").setOutputCol("userId")
+    val si2 = new StringIndexer().setInputCol("job_id").setOutputCol("itemId")
 
-      val loadedModel = Module.loadModule(modelPath + kth, null)
-      val dlModel = NNClassifierModel[Float](loadedModel, Array(2 * para.vectDim))
-        .setBatchSize(para.batchSize)
+    val pipeline = new Pipeline().setStages(Array(si1, si2))
+    val pipelineModel = pipeline.fit(validationVec)
+    val validationDF: DataFrame = pipelineModel.transform(validationVec)
 
-      val validationVectorsKth = validationVectorsCluster.filter("kth = " + kth)
+    validationDF
+  }
 
-      //step2
-      // every point go through the K mean model, and get a K for each record
-      //KmeanModel.predict(validationVectors), userVector renames features, transform kth and evaluate each model, return metrics
+  def evaluateWithGoldenData(sqlContext: SQLContext, param: AppParams) = {
 
-      val validationLP = getFeaturesLP(validationVectorsKth).coalesce(32)
+    val validationDF: DataFrame = getGoldenDF(sqlContext, param)
 
-      val predictions2: DataFrame = dlModel.transform(validationLP)
+    validationDF.persist(StorageLevel.DISK_ONLY)
+    val mode = param.mode
+    val predictions: DataFrame = mode match {
+      case Utils.Mode_NCFWithKeans => {
+        ncfWithKmeansPredict(param, sqlContext, validationDF)
+      }
+      case Utils.Mode_NCF =>
+        val loadedModel = ZooModel.loadModel(param.ncfParams.modelPath, null).asInstanceOf[NCFJob2Career]
+        ncfPredict(loadedModel, sqlContext, validationDF)
+      case _ =>
+        throw new IllegalArgumentException(s"mode $mode not supported")
+    }
 
-      predictions2.select("userId", "itemId", "label", "prediction").show(20, false)
-
-      predictions2
-
-    })
-
-    validationVectorsCluster.unpersist()
-
-    val predictorDF = predictorDFS.reduce((x, y) => x.union(y))
-    predictorDF.write.mode(SaveMode.Overwrite).parquet(para.outputDir)
-    // summarize
-    println("validation results on golden dataset")
-    val dataToValidation = predictorDF.withColumn("label", toZero(col("label")))
-      .withColumn("prediction", toZero(col("prediction")))
-    Evaluation.evaluate2(dataToValidation)
+    val metrics = evaluatePredictions(predictions)
+    validationDF.unpersist()
+    logger.info("evaluation for golden dataset")
+    logger.info("hyperparameters: " + param)
+    logger.info(metrics.mkString("|"))
+    //    predictions.write.mode(SaveMode.Overwrite).parquet(para.outputDir)
   }
 
 }

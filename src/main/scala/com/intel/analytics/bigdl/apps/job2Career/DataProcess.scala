@@ -7,74 +7,24 @@ import org.apache.spark.sql.functions.{udf, _}
 import org.apache.spark.sql._
 
 import scala.collection.{immutable, mutable}
-import scala.io.Source
-import com.intel.analytics.bigdl.apps.job2Career.DataProcess._
 import com.intel.analytics.bigdl.apps.job2Career.TrainWithD2VGlove.{doc2VecFromWordMap, loadWordVecMap, run}
+import com.intel.analytics.bigdl.apps.job2Career.Utils.AppParams
 import com.intel.analytics.bigdl.apps.recommendation.Utils._
-import org.apache.log4j.{Level, Logger}
-import org.apache.spark.ml.linalg.Vectors
-import org.apache.spark.{SparkConf, SparkContext}
+
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.storage.StorageLevel
-import scopt.OptionParser
 import org.apache.spark.sql.functions._
-
-import scala.util.Random
-
-case class DataProcessParams(val inputDir: String = "/Users/guoqiong/intelWork/projects/jobs2Career/",
-                             val outputDir: String = "add it if you need it",
-                             val topK: Int = 500,
-                             val negativeK: Int = 50,
-                             val dictDir: String = "/Users/guoqiong/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.300d.txt")
 
 object DataProcess {
 
-  def main(args: Array[String]): Unit = {
+  def preprocess(sqlContext: SQLContext, param: AppParams): Unit = {
 
-    val defaultParams = DataProcessParams()
-    Logger.getLogger("org").setLevel(Level.ERROR)
-
-    val conf = new SparkConf().setAppName("app")
-
-    val spark = SparkSession.builder().config(conf).getOrCreate()
-    spark.sparkContext.setLogLevel("ERROR")
-    spark.sqlContext.setConf("spark.sql.shuffle.partitions", "1000")
-
-    val parser = new OptionParser[DataProcessParams]("BigDL Example") {
-      opt[String]("inputDir")
-        .text(s"inputDir")
-        .action((x, c) => c.copy(inputDir = x))
-      opt[String]("outputDir")
-        .text(s"outputDir")
-        .action((x, c) => c.copy(outputDir = x))
-      opt[String]("topK")
-        .text(s"topK")
-        .action((x, c) => c.copy(topK = x.toInt))
-      opt[String]("negativeK")
-        .text(s"negativeK")
-        .action((x, c) => c.copy(negativeK = x.toInt))
-      opt[String]("dictDir")
-        .text(s"wordVec data")
-        .action((x, c) => c.copy(dictDir = x))
-    }
-
-    parser.parse(args, defaultParams).map {
-      params =>
-        run(spark, params)
-    } getOrElse {
-      System.exit(1)
-    }
-
-  }
-
-  def run(spark: SparkSession, para: DataProcessParams): Unit = {
-
-    val dataPath = para.inputDir
-    val lookupDict = para.dictDir
+    val input = param.dataPathParams.rawDir
+    val lookupDict = param.gloveParams.dictDir
     val dict: Map[String, Array[Float]] = loadWordVecMap(lookupDict)
-    val br: Broadcast[Map[String, Array[Float]]] = spark.sparkContext.broadcast(dict)
+    val br: Broadcast[Map[String, Array[Float]]] = sqlContext.sparkContext.broadcast(dict)
 
-    val applicationDF = spark.read.parquet(dataPath + "/resume_search/application_job_resume_2016_2017_10.parquet")
+    val applicationDF = sqlContext.read.parquet(input)
       .select("job_id", "jobs_description", "resume_url", "resume.resume.normalizedBody", "new_application")
       .withColumn("label", applicationStatusUdf(col("new_application")))
       .withColumn("userId", createResumeId(col("resume_url")))
@@ -124,14 +74,21 @@ object DataProcess {
     //      .orderBy("applyJobCount").show(1000, false)
 
 
-    val output = dataPath + "/data/indexed_application_job_resume_2016_2017_10_300d"
-
+    val output = param.dataPathParams.preprocessedDir
     indexed.printSchema()
 
-   // applicationVectors.coalesce(16).write.mode(SaveMode.Overwrite).parquet(output + "/applicationVectors")
-    indexed.coalesce(16).write.mode(SaveMode.Overwrite).parquet(output + "/indexed")
-    userDict.write.mode(SaveMode.Overwrite).parquet(output + "/userDict")
-    itemDict.write.mode(SaveMode.Overwrite).parquet(output + "/itemDict")
+    // applicationVectors.coalesce(16).write.mode(SaveMode.Overwrite).parquet(output + "/applicationVectors")
+    indexed.withColumnRenamed("userId", "userIdOrg")
+      .withColumnRenamed("userIdIndex", "userId")
+      .withColumnRenamed("itemId", "itemIdOrg")
+      .withColumnRenamed("itemIdIndex", "itemId")
+      .coalesce(16).write.mode(SaveMode.Overwrite).parquet(output + "/indexed")
+    userDict.withColumnRenamed("userId", "userIdOrg")
+      .withColumnRenamed("userIdIndex", "userId")
+      .write.mode(SaveMode.Overwrite).parquet(output + "/userDict")
+    itemDict.withColumnRenamed("itemId", "itemIdOrg")
+      .withColumnRenamed("itemIdIndex", "itemId")
+      .write.mode(SaveMode.Overwrite).parquet(output + "/itemDict")
     // joined data write out
 
     //    val negativeDF = negativeJoin(indexed, itemDict, userDict, para.negativeK)
@@ -206,29 +163,27 @@ object DataProcess {
     val negativeSamples = getNegativeSamples2(negativeK, indexed)
 
     val unioned = negativeSamples.union(indexed)
-    val out = unioned
-      .join(userDict, unioned("userIdIndex") === userDict("userIdIndex"))
-      .join(itemDict, unioned("itemIdIndex") === itemDict("itemIdIndex"))
-      .select(userDict("userIdIndex"), itemDict("itemIdIndex"), col("label"), userDict("userVec"), itemDict("itemVec"))
+      .join(userDict, Array("userId"))
+      .join(itemDict, Array("itemId"))
+      .select(col("userId"), col("itemId"), col("label"), col("userVec"), col("itemVec"))
       .withColumn("cosineSimilarity", getCosineSim(col("userVec"), col("itemVec")))
       .sort(col("cosineSimilarity").desc)
-      .withColumnRenamed("cosineSimilarity", "score")
 
-    out
+    unioned
   }
 
   def crossJoinAll(userDict: DataFrame, itemDict: DataFrame, indexed: DataFrame, K: Int = 50): DataFrame = {
 
-    val outAll = userDict.select("userIdIndex", "userVec").
-      crossJoin(itemDict.select("itemIdIndex", "itemVec"))
+    val outAll = userDict.select("userId", "userVec").
+      crossJoin(itemDict.select("itemId", "itemVec"))
       .withColumn("score", getCosineSim(col("userVec"), col("itemVec")))
       .drop("itemVec", "userVec")
 
     outAll.persist(StorageLevel.DISK_ONLY)
-    val w1 = Window.partitionBy("userIdIndex").orderBy(desc("score"))
+    val w1 = Window.partitionBy("userId").orderBy(desc("score"))
     val rankDF = outAll.withColumn("rank", rank.over(w1)).where(col("rank") <= K)
 
-    rankDF.join(indexed, Seq("userIdIndex", "itemIdIndex"), "leftouter")
+    rankDF.join(indexed, Seq("userId", "itemId"), "leftouter")
   }
 
   //("userId", "itemId", "userDoc", "itemDoc", "label")
@@ -276,6 +231,5 @@ object DataProcess {
     }
     udf(func)
   }
-
 
 }

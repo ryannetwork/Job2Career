@@ -3,6 +3,9 @@ package com.intel.analytics.bigdl.apps.recommendation
 import com.intel.analytics.bigdl.dataset.Sample
 import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.utils.T
+import com.intel.analytics.zoo.models.recommendation.UserItemFeature
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.fs.Path
 import org.apache.spark.ml.{Pipeline, linalg}
 import org.apache.spark.ml.feature.{LabeledPoint, StringIndexer}
 import org.apache.spark.ml.linalg.Vectors
@@ -22,7 +25,7 @@ object Utils {
 
   def addNegativeSample1(indexedDF: DataFrame) = {
 
-    val row = indexedDF.agg(max("userIdIndex"), max("itemIdIndex")).head
+    val row = indexedDF.agg(max("userId"), max("itemId")).head
     val (userCount, itemCount) = (row.getAs[Double](0).toInt, row.getAs[Double](1).toInt)
 
     println(userCount + "," + itemCount)
@@ -42,15 +45,15 @@ object Utils {
       })
       .filter(x => !sampleDict.contains(x._1 + "," + x._2)).distinct()
       .map(x => (x._1, x._2, 0.0))
-      .toDF("userIdIndex", "itemIdIndex", "label")
+      .toDF("userId", "itemId", "label")
 
     indexedDF.union(negativeSampleDF)
   }
 
   def getNegativeSamples2(amplifier: Int, indexed: DataFrame): DataFrame = {
 
-    val indexedDF = indexed.select("userIdIndex", "itemIdIndex", "label")
-    val minMaxRow = indexedDF.agg(max("userIdIndex"), max("itemIdIndex")).collect()(0)
+    val indexedDF = indexed.select("userId", "itemId", "label")
+    val minMaxRow = indexedDF.agg(max("userId"), max("itemId")).collect()(0)
     val (userCount, itemCount) = (minMaxRow.getDouble(0).toInt, minMaxRow.getDouble(1).toInt)
     val sampleDict = indexedDF.rdd.map(row => row(0) + "," + row(1)).collect().toSet
 
@@ -67,15 +70,15 @@ object Utils {
       })
     }).filter(x => !sampleDict.contains(x._1 + "," + x._2)).distinct()
       .map(x => (x._1, x._2, 0.0))
-      .toDF("userIdIndex", "itemIdIndex", "label")
+      .toDF("userId", "itemId", "label")
 
     negativeDF
   }
 
   def getNegativeSamples(amplifier: Int, trainDF: DataFrame) = {
 
-    val indexedDF = trainDF.select("userIdIndex", "itemIdIndex", "label")
-    val row = indexedDF.agg(max("userIdIndex"), max("itemIdIndex")).head
+    val indexedDF = trainDF.select("userId", "itemId", "label")
+    val row = indexedDF.agg(max("userId"), max("itemId")).head
     val (userCount, itemCount) = (row.getAs[Double](0).toInt, row.getAs[Double](1).toInt)
 
     println(userCount + "," + itemCount)
@@ -103,12 +106,45 @@ object Utils {
 
       }).filter(x => !sampleDict.contains(x._1 + "," + x._2)).distinct()
       .map(x => (x._1, x._2, 0.0))
-      .toDF("userIdIndex", "itemIdIndex", "label")
+      .toDF("userId", "itemId", "label")
 
     negativeSampleDF
   }
 
-  def df2rddOfSample(indexed: DataFrame): RDD[Sample[Float]] = {
+
+  def assemblyFeature(indexed: DataFrame): RDD[UserItemFeature[Float]] = {
+
+    val dfWithFeatures = getFeaturesLP(indexed)
+    val rddOfSample: RDD[UserItemFeature[Float]] = dfWithFeatures
+      .select("userId", "itemId", "features", "label")
+      .rdd.map(row => {
+      val uid = row.getAs[Double](0).toInt
+      val iid = row.getAs[Double](1).toInt
+      val featureArr: Array[Float] = row.getAs[mutable.WrappedArray[Double]](2).toArray.map(x => x.toFloat)
+      val label = row.getAs[Double](3)
+      val feature: Tensor[Float] = Tensor(featureArr, Array((featureArr).length))
+      UserItemFeature(uid, iid, Sample(feature, Tensor[Float](T(label))))
+    })
+    rddOfSample
+  }
+
+  //df to sample
+  def df2Sample(df: DataFrame): RDD[Sample[Float]] = {
+    val schema = df.schema
+    require(schema.fieldNames.contains("features"), s"Column features should exist")
+    require(schema.fieldNames.contains("label"), s"Column label should exist")
+    val rddOfSample = df.select("features", "label").rdd.map(row => {
+
+      val featuresArr: Array[Float] = row.getAs[mutable.WrappedArray[Double]](0).toArray.map(x => x.toFloat)
+      val label = row.getAs[Double](1).toFloat
+
+      val feature: Tensor[Float] = Tensor(featuresArr, Array(1, featuresArr.length))
+      Sample(feature, label)
+    })
+    rddOfSample
+  }
+
+  def df2Sample2(indexed: DataFrame): RDD[Sample[Float]] = {
 
     val rddOfSample = indexed.rdd.map(row => {
       val uid = row.getAs[Double](0).toFloat
@@ -123,7 +159,7 @@ object Utils {
 
   val df2LP: (DataFrame) => DataFrame = df => {
     import df.sparkSession.implicits._
-    df.select("userIdIndex", "itemIdIndex", "label").rdd.map { r =>
+    df.select("userId", "itemId", "label").rdd.map { r =>
       val f: linalg.Vector = Vectors.dense(r.getDouble(0), r.getDouble(1))
       require(f.toArray.take(2).forall(_ >= 0))
       val l = r.getDouble(2)
@@ -137,28 +173,10 @@ object Utils {
       val vec = r.getSeq[Float](0) ++ r.getSeq[Float](1)
       val vect: Seq[Double] = vec.map(_.toDouble)
       val f: linalg.Vector = Vectors.dense(vect.toArray)
-      require(f.toArray.size == 100)
       val l = r.getDouble(2)
       LabeledPoint(l, f)
     }.toDF().orderBy(rand()).cache()
   }
-
-  //df to sample
-  def df2Sample(df: DataFrame): RDD[Sample[Float]] = {
-    val schema = df.schema
-      require(schema.fieldNames.contains("features"), s"Column features should exist")
-    require(schema.fieldNames.contains("label"), s"Column label should exist")
-    val rddOfSample = df.select("features", "label").rdd.map(row => {
-
-      val featuresArr: Array[Float] = row.getAs[mutable.WrappedArray[Double]](0).toArray.map(x=> x.toFloat)
-      val label = row.getAs[Double](1).toFloat
-
-      val feature: Tensor[Float] = Tensor(featuresArr,Array(1, featuresArr.length))
-      Sample(feature, label)
-    })
-    rddOfSample
-  }
-
 
   def getFeaturesLP(trainDF: DataFrame): DataFrame = {
 
@@ -168,7 +186,6 @@ object Utils {
       val vec = userVec ++ itemVec
       val vect: Seq[Double] = vec.map(_.toDouble)
       val f: linalg.Vector = Vectors.dense(vect.toArray)
-      //     require(f.toArray.size == 100)
       f.toArray
     })
 
@@ -237,7 +254,7 @@ object Utils {
   def getAbsRank(df: DataFrame, K: Int = 30): DataFrame = {
 
     val ranked = if (!df.columns.contains("rank")) {
-      val w2 = Window.partitionBy("userIdIndex").orderBy(desc("score"))
+      val w2 = Window.partitionBy("userId").orderBy(desc("score"))
       df.withColumn("rank", rank.over(w2)).where(col("rank") <= K)
     } else {
       df.where(col("rank") <= K)
@@ -245,12 +262,12 @@ object Utils {
 
     ranked.registerTempTable("temp")
 
-    val labeled = df.sqlContext.sql("select userIdIndex, avg(rank) from temp where label = 1.0 group by userIdIndex")
+    val labeled = df.sqlContext.sql("select userId, avg(rank) from temp where label = 1.0 group by userId")
 
-    val dict = labeled.select("userIdIndex").rdd.map(row => row.getDouble(0)).collect().toSet
+    val dict = labeled.select("userId").rdd.map(row => row.getDouble(0)).collect().toSet
 
-    val filterUdf = udf((userIdIndex: Double) => !dict.contains(userIdIndex))
-    val noLabel = ranked.filter(filterUdf(col("userIdIndex"))).select("userIdIndex")
+    val filterUdf = udf((userId: Double) => !dict.contains(userId))
+    val noLabel = ranked.filter(filterUdf(col("userId"))).select("userId")
       .distinct().withColumn("avg(rank)", lit(K + 1))
 
     val rankDF = labeled.union(noLabel)
@@ -263,10 +280,10 @@ object Utils {
 
   def getHitRatioNDCG(dfin: DataFrame, K: Int = 30): (Double, Double) = {
 
-    val w2 = Window.partitionBy("userIdIndex").orderBy(desc("score"))
+    val w2 = Window.partitionBy("userId").orderBy(desc("score"))
     val ranked = dfin.withColumn("rank", rank.over(w2)).where(col("rank") <= K)
 
-    val w1 = Window.partitionBy("userIdIndex").orderBy(desc("label"))
+    val w1 = Window.partitionBy("userId").orderBy(desc("label"))
     val selected = ranked.withColumn("rn", row_number.over(w1)).where(col("rn") === 1).drop("rn")
 
     val ndcgUdf = udf((rank: Int, label: Int) => if (label == 1) math.log(2) / math.log(rank + 1) else 0)
@@ -276,7 +293,7 @@ object Utils {
 
     df.filter("label = 0").count()
 
-    val resultDF = df.groupBy("userIdIndex")
+    val resultDF = df.groupBy("userId")
       .agg(sum("hit"), sum("ndcg"))
       .agg(avg(col("sum(hit)")), avg("sum(ndcg)"))
 
@@ -309,4 +326,23 @@ object Utils {
     (arg: Double) => BigDecimal(arg).setScale(n, BigDecimal.RoundingMode.HALF_UP).toDouble
   }
 
+  def deleteFile(path: String) = {
+    val p = new Path(path)
+    val fs = p.getFileSystem(new Configuration())
+    if (fs.exists(p)) {
+      fs.delete(p, true)
+    }
+  }
+
+
+  val array2vec = udf((arr: scala.collection.mutable.WrappedArray[Float]) => {
+    val d = arr.map(x => x.toDouble)
+    Vectors.dense(d.toArray)
+  })
+
+
+  val vec2array = udf((arr: scala.collection.mutable.WrappedArray[Double]) => {
+    val d = arr.map(x => x.toFloat)
+    Array(d.toArray)
+  })
 }

@@ -6,6 +6,7 @@ import com.intel.analytics.bigdl.nn._
 import com.intel.analytics.bigdl.optim.Adam
 import com.intel.analytics.bigdl.tensor.TensorNumericMath.TensorNumeric.NumericFloat
 import com.intel.analytics.bigdl.utils.Engine
+import com.intel.analytics.zoo.pipeline.nnframes.{NNClassifier, NNClassifierModel, NNModel}
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.SparkContext
 import org.apache.spark.ml.{DLClassifier, DLModel}
@@ -71,7 +72,7 @@ object TrainWithNCF {
     val time1 = System.nanoTime()
     val modelParam = ModelParam(userEmbed = 20,
       itemEmbed = 20,
-      midLayers = Array(40, 20),
+      hiddenLayers = Array(40, 20),
       labels = 2)
 
     val recModel = new ModelUtils(modelParam)
@@ -82,16 +83,15 @@ object TrainWithNCF {
     val criterion = ClassNLLCriterion()
     //val criterion = MSECriterion[Float]()
 
-    val dlc = new DLClassifier(model, criterion, Array(2))
+    val dlc = NNClassifier(model, criterion, Array(2))
       .setBatchSize(1000)
       .setOptimMethod(new Adam())
       .setLearningRate(1e-2)
       .setLearningRateDecay(1e-5)
       .setMaxEpoch(10)
 
-    val dlModel: DLModel[Float] = dlc.fit(trainingDF)
+    val dlModel: NNModel[Float] = dlc.fit(trainingDF)
 
-    println("featuresize " + dlModel.featureSize)
     println("model weights  " + dlModel.model.getParameters())
     val time2 = System.nanoTime()
 

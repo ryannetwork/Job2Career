@@ -1,0 +1,83 @@
+package com.intel.analytics.bigdl.apps.job2Career
+
+import scopt.OptionParser
+
+object Utils {
+
+  val Mode_Data = "data"
+  val Mode_NCF = "NCFOnly"
+  val Mode_NCFWithKeans = "NCFWithKmeans"
+  val seperator = ","
+
+  case class GloveParam(dictDir: String,
+                        vectDim: Int)
+
+  case class KmeansParam(kClusters: Int,
+                         numIterations: Int,
+                         isTrain: Boolean,
+                         featureVec: String,
+                         modelPath: String)
+
+  case class NCFParam(batchSize: Int,
+                      nEpochs: Int,
+                      learningRate: Double,
+                      learningRateDecay: Double,
+                      isTrain: Boolean,
+                      modelPath: String)
+
+  case class DataPathParam(rawDir: String,
+                           preprocessedDir: String,
+                           modelOutput: String,
+                           evaluateDir: String,
+                           saveOverride: Boolean)
+
+  case class AppParams(dataPathParams: DataPathParam = DataPathParam("/Users/guoqiong/intelWork/projects/jobs2Career/resume_search/application_job_resume_2016_2017_10.parquet", "/Users/guoqiong/intelWork/projects/jobs2Career/preprocessed/", "/Users/guoqiong/intelWork/projects/jobs2Career/modelOutput/", "/Users/guoqiong/intelWork/projects/jobs2Career/data/validation/part*", true),
+                       //       ncfParams: NCFParam = NCFParam(1024, 10, 5e-3, 1e-6, true, "/Users/guoqiong/intelWork/projects/jobs2Career/model/ncf"),
+                       ncfParams: NCFParam = NCFParam(1024, 20, 5e-2, 1e-6, true, "/Users/guoqiong/intelWork/projects/jobs2Career/model/ncfWithKmeans"),
+                       kmeansParams: KmeansParam = KmeansParam(3, 20, true, "userVec", "/Users/guoqiong/intelWork/projects/jobs2Career/model/kmeans"),
+                       gloveParams: GloveParam = GloveParam("/Users/guoqiong/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.50d.txt", 50),
+                       defaultPartition: Int = 60,
+                       negativeK: Int = 1,
+                       mode: String = Mode_NCFWithKeans)
+
+  val trainParser = new OptionParser[AppParams]("Recommendation demo") {
+    head("AppParams:")
+
+    opt[String]("dataPathParams")
+      .text("dataPath Params")
+      .action((x, c) => {
+        val pArr = x.split(seperator).map(_.trim)
+        val p = DataPathParam(pArr(0), pArr(1), pArr(2), pArr(3), pArr(4).toBoolean)
+        c.copy(dataPathParams = p)
+      })
+    opt[String]("ncfParams")
+      .text("ncfParams")
+      .action((x, c) => {
+        val pArr = x.split(seperator).map(_.trim)
+        val p = NCFParam(pArr(0).toInt, pArr(1).toInt, pArr(2).toDouble, pArr(3).toDouble,
+          pArr(4).toBoolean, pArr(5))
+        c.copy(ncfParams = p)
+      })
+    opt[String]("kmeansParams")
+      .text("kmeansParams")
+      .action((x, c) => {
+        val pArr = x.split(seperator).map(_.trim)
+        val p = KmeansParam(pArr(0).toInt, pArr(1).toInt, pArr(2).toBoolean, pArr(3), pArr(4))
+        c.copy(kmeansParams = p)
+      })
+    opt[String]("gloveParams")
+      .text("gloveParams")
+      .action((x, c) => {
+        val pArr = x.split(seperator).map(_.trim)
+        val p = GloveParam(pArr(0), pArr(1).toInt)
+        c.copy(gloveParams = p)
+      })
+    opt[String]("negativeK")
+      .text("negativeK")
+      .action((x, c) => c.copy(negativeK = x.toInt))
+    opt[String]("mode")
+      .text("mode")
+      .action((x, c) => c.copy(mode = x))
+  }
+
+}

@@ -8,13 +8,13 @@ import com.intel.analytics.bigdl.tensor.Tensor
 case class ModelParam(userEmbed: Int = 20,
                       itemEmbed: Int = 20,
                       mfEmbed: Int = 20,
-                      midLayers: Array[Int] = Array(40, 20, 10),
+                      hiddenLayers: Array[Int] = Array(40, 20, 10),
                       labels: Int = 2) {
   override def toString: String = {
     "userEmbed =" + userEmbed + "\n" +
       " itemEmbed = " + itemEmbed + "\n" +
       " mfEmbed = " + mfEmbed + "\n" +
-      " midLayer = " + midLayers.mkString("|") + "\n" +
+      " midLayer = " + hiddenLayers.mkString("|") + "\n" +
       " labels = " + labels
   }
 }
@@ -44,12 +44,12 @@ class ModelUtils(modelParam: ModelParam) {
     val embeddedLayer = JoinTable(2, 0).inputs(userTableInput, itemTableInput)
 
     val linear1: ModuleNode[Float] = Linear(modelParam.itemEmbed + modelParam.userEmbed,
-      modelParam.midLayers(0)).inputs(embeddedLayer)
+      modelParam.hiddenLayers(0)).inputs(embeddedLayer)
 
-    val midLayer = buildMlpModuleNode(linear1, 1, modelParam.midLayers)
+    val midLayer = buildMlpModuleNode(linear1, 1, modelParam.hiddenLayers)
 
     val reluLast = ReLU().inputs(midLayer)
-    val last: ModuleNode[Float] = Linear(modelParam.midLayers.last, modelParam.labels).inputs(reluLast)
+    val last: ModuleNode[Float] = Linear(modelParam.hiddenLayers.last, modelParam.labels).inputs(reluLast)
 
     val output = if (modelParam.labels >= 2) LogSoftMax().inputs(last) else Sigmoid().inputs(last)
 
@@ -81,15 +81,32 @@ class ModelUtils(modelParam: ModelParam) {
     Graph(input, output)
   }
 
+  def mlpPreEmbed = {
+    val featureSize = modelParam.userEmbed + modelParam.itemEmbed
+    val hiddenLayers = modelParam.hiddenLayers
+    val mlpModel = Sequential()
+    val linear1 = Linear(featureSize, hiddenLayers(0),
+      initWeight = Tensor(hiddenLayers(0), featureSize).randn(0, 0.1),
+      initBias = Tensor(hiddenLayers(0)).randn(0, 0.1))
+    mlpModel.add(linear1).add(ReLU())
+    for (i <- 1 to hiddenLayers.length - 1) {
+      mlpModel.add(
+        Linear(hiddenLayers(i - 1), hiddenLayers(i),
+          initWeight = Tensor(hiddenLayers(i), hiddenLayers(i - 1)).randn(0, 0.1),
+          initBias = Tensor(hiddenLayers(i)).randn(0, 0.1))
+      ).add(ReLU())
+    }
+    mlpModel
+  }
+
   def mlp3 = {
     val model = Sequential()
-    model.add(Linear(100, 40))
+    model.add(Linear(100, 40, initWeight = Tensor(40, 100).randn(0, 0.1), initBias = Tensor(40).randn(0, 0.1)))
     model.add(ReLU())
-    model.add(Linear(40, 20))
+    model.add(Linear(40, 20, initWeight = Tensor(20, 40).randn(0, 0.1), initBias = Tensor(20).randn(0, 0.1)))
+    model.add(Linear(20, 10, initWeight = Tensor(10, 20).randn(0, 0.1), initBias = Tensor(10).randn(0, 0.1)))
     model.add(ReLU())
-    model.add(Linear(20, 10))
-    model.add(ReLU())
-    model.add(Linear(10, 2))
+    model.add(Linear(10, 2, initWeight = Tensor(2, 10).randn(0, 0.1), initBias = Tensor(2).randn(0, 0.1)))
     model.add(ReLU())
     model.add(LogSoftMax())
     model
@@ -156,17 +173,17 @@ class ModelUtils(modelParam: ModelParam) {
     val mlpModel = Sequential()
     mlpModel.add(mlpEmbeddedLayer)
 
-    val linear1 = Linear(modelParam.itemEmbed + modelParam.userEmbed, modelParam.midLayers(0))
+    val linear1 = Linear(modelParam.itemEmbed + modelParam.userEmbed, modelParam.hiddenLayers(0))
     mlpModel.add(linear1).add(ReLU())
 
-    for (i <- 1 to modelParam.midLayers.length - 1) {
-      mlpModel.add(Linear(modelParam.midLayers(i - 1), modelParam.midLayers(i))).add(ReLU())
+    for (i <- 1 to modelParam.hiddenLayers.length - 1) {
+      mlpModel.add(Linear(modelParam.hiddenLayers(i - 1), modelParam.hiddenLayers(i))).add(ReLU())
     }
 
     val concatedModel = Concat(2).add(mfModel).add(mlpModel)
 
     val model = Sequential()
-    model.add(concatedModel).add(Linear(modelParam.mfEmbed + modelParam.midLayers.last, modelParam.labels))
+    model.add(concatedModel).add(Linear(modelParam.mfEmbed + modelParam.hiddenLayers.last, modelParam.labels))
 
     if (modelParam.labels >= 2) model.add(LogSoftMax()) else model.add(Sigmoid())
     model

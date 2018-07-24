@@ -43,7 +43,5 @@ class DataPostprocessSuite extends FunSuite with BeforeAndAfter {
     val data = Array((0, Array(0.1, 0.2)), (1, Array(0.8, 0.9)), (2, Array(0.15, 0.2)), (3, Array(0.7, 0.9))).map(x => User2(x._1, x._2))
     val dataset: Dataset[User2] = spark.createDataset(data)
 
-    TrainWithEnsambleNCF_Glove.kmeansProcessRDD(dataset.toDF(), "feature", "src/test/model", true).show()
-
   }
 }

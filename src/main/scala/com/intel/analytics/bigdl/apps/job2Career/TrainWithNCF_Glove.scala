@@ -72,9 +72,19 @@ object TrainWithNCF_Glove {
     val modelPath = param.inputDir + "/model/all"
 
     val indexed = sqlContext.read.parquet(input + "/indexed")
+      .drop("itemIdOrg").drop("userIdOrg")
+    // .withColumnRenamed("itemId", "itemIdOrg").withColumnRenamed("itemIdIndex", "itemId").withColumnRenamed("userId", "userIdOrg").withColumnRenamed("userIdIndex", "userId")
     val userDict = sqlContext.read.parquet(input + "/userDict")
+    //  .withColumnRenamed("userId", "userIdOrg").withColumnRenamed("userIdIndex", "userId")
     val itemDict = sqlContext.read.parquet(input + "/itemDict")
+    //.withColumnRenamed("itemId", "itemIdOrg").withColumnRenamed("itemIdIndex", "itemId")
 
+    indexed.printSchema()
+    indexed.show(3)
+    userDict.printSchema()
+    userDict.show(3)
+    itemDict.printSchema()
+    itemDict.show(3)
     val splitNum = (userDict.count() * 0.8).toInt
 
     //    val indexedTrain = indexed.filter(col("userIdIndex") <= splitNum)
@@ -99,7 +109,7 @@ object TrainWithNCF_Glove {
     val time1 = System.nanoTime()
     val modelParam = ModelParam(userEmbed = 20,
       itemEmbed = 20,
-      midLayers = Array(40, 20),
+      hiddenLayers = Array(40, 20),
       labels = 2)
 
     val recModel = new ModelUtils(modelParam)
@@ -143,6 +153,9 @@ object TrainWithNCF_Glove {
     println("prediction time(s):  " + toDecimal(3)(predictionTime))
     println("evaluation time(s):  " + toDecimal(3)(evaluationTime))
 
+    trainingDF.unpersist()
+    validationDF.unpersist()
+
     processGoldendata(sqlContext, param, modelPath)
     println("stop")
 
@@ -151,7 +164,7 @@ object TrainWithNCF_Glove {
   def processGoldendata(sqlContext: SQLContext, para: TrainParam, modelPath: String) = {
 
     val loadedModel = Module.loadModule(modelPath, null)
-    val dlModel =  NNClassifierModel[Float](loadedModel, Array(2 * para.vectDim))
+    val dlModel = NNClassifierModel[Float](loadedModel, Array(2 * para.vectDim))
       .setBatchSize(para.batchSize)
 
     val validationIn = sqlContext.read.parquet(para.valDir)
@@ -176,7 +189,12 @@ object TrainWithNCF_Glove {
     val validationLP = getFeaturesLP(validationVectors).coalesce(32)
 
     val predictions2: DataFrame = dlModel.transform(validationLP)
-
+    println("predictions:-----------------------------")
+    predictions2.printSchema()
+    predictions2.show(5)
+    predictions2.count()
+    predictions2.groupBy("label").count().show()
+    predictions2.groupBy("prediction").count().show()
     predictions2.persist().count()
     predictions2.select("userId", "itemId", "label", "prediction").show(20, false)
 
@@ -185,7 +203,7 @@ object TrainWithNCF_Glove {
       .withColumn("prediction", toZero(col("prediction")))
     Evaluation.evaluate2(dataToValidation)
 
-    predictions2.write.mode(SaveMode.Overwrite).parquet(para.outputDir)
+    // predictions2.write.mode(SaveMode.Overwrite).parquet(para.outputDir)
 
   }
 

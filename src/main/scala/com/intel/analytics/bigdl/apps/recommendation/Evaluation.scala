@@ -1,10 +1,19 @@
 package com.intel.analytics.bigdl.apps.recommendation
 
+import com.intel.analytics.bigdl.apps.job2Career.{DataProcess, Utils}
+import com.intel.analytics.bigdl.apps.job2Career.TrainWithD2VGlove.loadWordVecMap
+import com.intel.analytics.bigdl.apps.job2Career.TrainWithEnsambleNCF_Glove.{ncfPredict, ncfWithKmeansPredict}
+import com.intel.analytics.bigdl.apps.job2Career.Utils.AppParams
 import org.apache.spark.ml.evaluation.{BinaryClassificationEvaluator, MulticlassClassificationEvaluator}
-import org.apache.spark.sql.DataFrame
+import org.apache.spark.sql.{DataFrame, SQLContext}
 import com.intel.analytics.bigdl.apps.recommendation.Utils._
+import com.intel.analytics.zoo.models.common.ZooModel
+import org.apache.spark.broadcast.Broadcast
+import org.apache.spark.ml.Pipeline
+import org.apache.spark.ml.feature.StringIndexer
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.functions._
+import org.apache.spark.storage.StorageLevel
 
 object Evaluation {
 
@@ -41,8 +50,8 @@ object Evaluation {
     val recall_denomiator = truePositive.toDouble + falseNegative.toDouble
     // handle scenario when denominator became 0. Check log for more detailed info to debug
     val accuracy = if (accuracy_denominator > 0) (truePositive.toDouble + trueNegative.toDouble) / accuracy_denominator else -1
-    val precision = if(precision_denominator > 0) truePositive.toDouble / precision_denominator else -1
-    val recall = if(recall_denomiator > 0) truePositive.toDouble / recall_denomiator else -1
+    val precision = if (precision_denominator > 0) truePositive.toDouble / precision_denominator else -1
+    val recall = if (recall_denomiator > 0) truePositive.toDouble / recall_denomiator else -1
 
     println("truePositive: " + truePositive)
     println("falsePositive: " + falsePositive)
@@ -63,9 +72,19 @@ object Evaluation {
     println("modelAUROC: " + modelAUROC)
     println("modelAUPR: " + modelAUPR)
 
-    Seq(accuracy, precision, recall, modelAUROC, modelAUPR)
-    //Seq(accuracy, precision, recall, modelAUROC, modelAUPR).map(x => toDecimal(3)(x))
+    //Seq(accuracy, precision, recall, modelAUROC, modelAUPR)
+    Seq(accuracy, precision, recall, modelAUROC, modelAUPR).map(x => toDecimal(3)(x))
 
+  }
+
+  def evaluatePredictions(predictionsIn: DataFrame) = {
+    val predictions = predictionsIn.withColumn("label", toZero(col("label")))
+      .withColumn("prediction", toZero(col("prediction")))
+
+    predictions.persist(StorageLevel.DISK_ONLY)
+    val metrics = Evaluation.evaluate2(predictions)
+    predictions.unpersist()
+    metrics
   }
 
 }
