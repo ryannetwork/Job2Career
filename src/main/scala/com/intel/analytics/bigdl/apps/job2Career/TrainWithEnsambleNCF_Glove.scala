@@ -43,17 +43,20 @@ object TrainWithEnsambleNCF_Glove {
 
   def run(sqlContext: SQLContext, param: AppParams): Unit = {
 
-    val input: String = param.dataPathParams.preprocessedDir
-    val indexed = sqlContext.read.parquet(input + "/indexed").drop("itemIdOrg").drop("userIdOrg")
-    val userDict = sqlContext.read.parquet(input + "/userDict")
-    val itemDict = sqlContext.read.parquet(input + "/itemDict")
+    def readPreprocessed(): (DataFrame, DataFrame, DataFrame) = {
+      val input: String = param.dataPathParams.preprocessedDir
+      val indexed = sqlContext.read.parquet(input + "/indexed").drop("itemIdOrg").drop("userIdOrg")
+      val userDict = sqlContext.read.parquet(input + "/userDict")
+      val itemDict = sqlContext.read.parquet(input + "/itemDict")
 
-    val indexedAll = DataProcess.negativeJoin(indexed, itemDict, userDict, param.negativeK)
-      .withColumn("label", add1(col("label")))
-    indexedAll.write.mode(SaveMode.Overwrite).parquet(param.dataPathParams.preprocessedDir + "/indexedNeg" + param.negativeK)
-    //  val indexedAll = sqlContext.read.parquet(param.dataPathParams.preprocessedDir + "/indexedNeg" + param.negativeK)
+      val indexedAll = DataProcess.negativeJoin(indexed, itemDict, userDict, param.negativeK)
+        .withColumn("label", add1(col("label")))
+      indexedAll.write.mode(SaveMode.Overwrite).parquet(param.dataPathParams.preprocessedDir + "/indexedNeg" + param.negativeK)
+      (indexedAll, userDict, itemDict)
+    }
 
-    def processNcfWithKmeans(indexed: DataFrame) = {
+
+    def processNcfWithKmeans(indexed: DataFrame, userDict: DataFrame) = {
 
       val kmeanUserDict = processKmeans(userDict, param.kmeansParams).persist()
       kmeanUserDict.write.mode(SaveMode.Overwrite).parquet(param.dataPathParams.modelOutput + "/kmeans")
@@ -92,7 +95,7 @@ object TrainWithEnsambleNCF_Glove {
       }
 
       val predictions = ncfPredict(model, sqlContext, validationDF)
-      val metrics = evaluatePredictions(predictions.join(indexedAll, Array("userId", "itemId")))
+      val metrics = evaluatePredictions(predictions.join(validationDF, Array("userId", "itemId")))
       logger.info("evaluation for validation dataset")
       logger.info("hyperparameters: " + param)
       logger.info(metrics.mkString("|"))
@@ -101,8 +104,10 @@ object TrainWithEnsambleNCF_Glove {
     val mode = param.mode
     mode match {
       case Utils.Mode_NCFWithKeans =>
-        processNcfWithKmeans(indexedAll)
+        val (indexedAll, userDict, itemDict) = readPreprocessed()
+        processNcfWithKmeans(indexedAll, userDict)
       case Utils.Mode_NCF =>
+        val (indexedAll, userDict, itemDict) = readPreprocessed()
         processNcf(-1, indexedAll)
       case Utils.Mode_Data =>
         DataProcess.preprocess(sqlContext, param)
