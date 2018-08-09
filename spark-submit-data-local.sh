@@ -23,9 +23,9 @@
 --conf spark.rdd.compress=true \
  dist/job2career-with-dependencies.jar \
 --dataPathParams  "/home/arda/intelWork/projects/jobs2Career/resume_search/application_job_resume_2016_2017_10.parquet,/home/arda/intelWork/projects/jobs2Career/preprocessed/,/home/arda/intelWork/projects/jobs2Career/modelOutput/,/home/arda/intelWork/projects/jobs2Career/data/validation/part*,true" \
---ncfParams "1024, 10, 5e-2, 1e-6, true, /home/arda/intelWork/projects/jobs2Career/model/ncfWithKmeans"  \
+--ncfParams "1024, 10, 1e-2, 1e-5, true, /home/arda/intelWork/projects/jobs2Career/model/ncfWithKmeans"  \
 --kmeansParams "3, 20, true, userVec, /home/arda/intelWork/projects/jobs2Career/model/kmeans" \
 --gloveParams "/home/arda/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.50d.txt, 50" \
 --negativeK 1 \
 --mode "NCFWithKmeans"
---mode "data"
+#--mode "data"

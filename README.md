@@ -4,8 +4,10 @@
 [BigDL](https://github.com/intel-analytics/BigDL/) is a distributed deep learning library for Apache Spark; with BigDL, users can write their deep learning applications as standard Spark programs, which can directly run on top of existing Spark or Hadoop clusters.
 
 ## Deploy BigDL application on Databricks cloud
-1. Step1 Build jar at local
-    * Mvn clean install assembly:assembly
+1. Step1 build analytics-zoo jar
+    clone analytics zoo to local: git clone https://github.com/intel-analytics/analytics-zoo
+    build job2career-with-dependencies.jar: mvn clean install -DskipTests
+
 2. Step 2 login on to web with credentials
 3. Step 3 setup cluster
     * Clusters -> create cluster
