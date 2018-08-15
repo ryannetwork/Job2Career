@@ -44,4 +44,10 @@ class DataPostprocessSuite extends FunSuite with BeforeAndAfter {
     val dataset: Dataset[User2] = spark.createDataset(data)
 
   }
+
+  test("new data") {
+    val df = spark.read.parquet("/home/arda/intelWork/projects/jobs2Career/data/validation_2018-03-01_2018-03-31_click-filter")
+    df.show()
+    df.printSchema()
+  }
 }
