@@ -46,8 +46,23 @@ class DataPostprocessSuite extends FunSuite with BeforeAndAfter {
   }
 
   test("new data") {
-    val df = spark.read.parquet("/home/arda/intelWork/projects/jobs2Career/data/validation_2018-03-01_2018-03-31_click-filter")
-    df.show()
-    df.printSchema()
+    val aprData ="/home/arda/intelWork/projects/jobs2Career/data/validation-with-click_2018-04-01_2018-04-30_click-filter"
+    val oldVali = "/home/arda/intelWork/projects/jobs2Career/data/validation"
+    val df1 = spark.read.parquet(aprData)
+    df1.printSchema()
+    println(df1.count())
+    df1.groupBy("apply_flag", "is_clicked").count().show()
+
+    val preprocessedData = "/home/arda/intelWork/projects/jobs2Career/preprocessed/"
+    val indexed = spark.read.parquet(preprocessedData + "indexed")
+    val userDict = spark.read.parquet(preprocessedData + "/userDict")
+    val itemDict = spark.read.parquet(preprocessedData + "/itemDict")
+    indexed.show(5)
+    userDict.show(5)
+    itemDict.show(5)
+    println(indexed.count())
+    println(userDict.count())
+    println(itemDict.count())
+    indexed.groupBy("label").count().show()
   }
 }

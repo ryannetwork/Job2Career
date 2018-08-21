@@ -25,20 +25,20 @@ object Utils {
                       isTrain: Boolean,
                       modelPath: String)
 
-  case class DataPathParam(rawDir: String,
-                           preprocessedDir: String,
-                           modelOutput: String,
-                           evaluateDir: String,
-                           saveOverride: Boolean)
+  case class DataParam(rawDir: String,
+                       preprocessedDir: String,
+                       modelOutput: String,
+                       evaluateDir: String,
+                       labelCol: String)
 
-  case class AppParams(dataPathParams: DataPathParam = DataPathParam("/Users/guoqiong/intelWork/projects/jobs2Career/resume_search/application_job_resume_2016_2017_10.parquet", "/Users/guoqiong/intelWork/projects/jobs2Career/preprocessed/", "/Users/guoqiong/intelWork/projects/jobs2Career/modelOutput/", "/Users/guoqiong/intelWork/projects/jobs2Career/data/validation/part*", true),
+  case class AppParams(dataPathParams: DataParam = DataParam("/home/arda/intelWork/projects/jobs2Career/data/validation-with-click_2018-04-01_2018-04-30_click-filter", "/home/arda/intelWork/projects/jobs2Career/preprocessed/", "/home/arda/intelWork/projects/jobs2Career/modelOutput/", "/home/arda/intelWork/projects/jobs2Career/data/validation-with-click_2018-03-01_2018-03-31_click-filter", "is_clicked"),
                        //       ncfParams: NCFParam = NCFParam(1024, 10, 5e-3, 1e-6, true, "/Users/guoqiong/intelWork/projects/jobs2Career/model/ncf"),
-                       ncfParams: NCFParam = NCFParam(1024, 20, 5e-2, 1e-6, true, "/Users/guoqiong/intelWork/projects/jobs2Career/model/ncfWithKmeans"),
-                       kmeansParams: KmeansParam = KmeansParam(3, 20, true, "userVec", "/Users/guoqiong/intelWork/projects/jobs2Career/model/kmeans"),
-                       gloveParams: GloveParam = GloveParam("/Users/guoqiong/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.50d.txt", 50),
+                       ncfParams: NCFParam = NCFParam(1024, 20, 5e-2, 1e-6, true, "/home/arda/intelWork/projects/jobs2Career/model/ncfWithKmeans"),
+                       kmeansParams: KmeansParam = KmeansParam(3, 20, true, "userVec", "/home/arda/intelWork/projects/jobs2Career/model/kmeans"),
+                       gloveParams: GloveParam = GloveParam("/home/arda/intelWork/projects/wrapup/textClassification/keras/glove.6B/glove.6B.50d.txt", 50),
                        defaultPartition: Int = 60,
                        negativeK: Int = 1,
-                       mode: String = Mode_NCFWithKeans)
+                       mode: String = Mode_NCF)
 
   val trainParser = new OptionParser[AppParams]("Recommendation demo") {
     head("AppParams:")
@@ -47,7 +47,7 @@ object Utils {
       .text("dataPath Params")
       .action((x, c) => {
         val pArr = x.split(seperator).map(_.trim)
-        val p = DataPathParam(pArr(0), pArr(1), pArr(2), pArr(3), pArr(4).toBoolean)
+        val p = DataParam(pArr(0), pArr(1), pArr(2), pArr(3), pArr(4))
         c.copy(dataPathParams = p)
       })
     opt[String]("ncfParams")

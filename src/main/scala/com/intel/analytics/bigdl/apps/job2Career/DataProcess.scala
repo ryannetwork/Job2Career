@@ -19,6 +19,24 @@ object DataProcess {
 
   def preprocess(sqlContext: SQLContext, param: AppParams): Unit = {
 
+   val indexedAll = TrainWithEnsambleNCF_Glove.getGoldenDF(sqlContext,param.gloveParams.dictDir,param.dataPathParams.rawDir)
+
+    val userVectors =indexedAll.select("userId", "userVec").distinct()
+    val userDict = dedupe(userVectors, "userId", "userVec")
+
+    val itemVectors = indexedAll.select("itemId", "itemVec").distinct()
+    val itemDict = dedupe(itemVectors, "itemId", "itemVec")
+    val output = param.dataPathParams.preprocessedDir
+
+    indexedAll.coalesce(16).write.mode(SaveMode.Overwrite).parquet(output + "/indexed")
+    userDict.write.mode(SaveMode.Overwrite).parquet(output + "/userDict")
+    itemDict.write.mode(SaveMode.Overwrite).parquet(output + "/itemDict")
+
+    println("done")
+  }
+
+  def preprocessOld(sqlContext: SQLContext, param: AppParams): Unit = {
+
     val input = param.dataPathParams.rawDir
     val lookupDict = param.gloveParams.dictDir
     val dict: Map[String, Array[Float]] = loadWordVecMap(lookupDict)
@@ -117,6 +135,8 @@ object DataProcess {
   })
 
   val applicationStatusUdf = udf((application: Boolean) => 1.0)
+  val labelUdf = udf((apply: Boolean, click:Boolean) =>
+    if (click) 1.0 else 0.0)
 
   def indexData(applicationDF: DataFrame) = {
 

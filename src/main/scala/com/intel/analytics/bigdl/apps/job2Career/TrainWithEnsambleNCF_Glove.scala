@@ -49,12 +49,11 @@ object TrainWithEnsambleNCF_Glove {
       val userDict = sqlContext.read.parquet(input + "/userDict")
       val itemDict = sqlContext.read.parquet(input + "/itemDict")
 
-      val indexedAll = DataProcess.negativeJoin(indexed, itemDict, userDict, param.negativeK)
-        .withColumn("label", add1(col("label")))
-      indexedAll.write.mode(SaveMode.Overwrite).parquet(param.dataPathParams.preprocessedDir + "/indexedNeg" + param.negativeK)
-      (indexedAll, userDict, itemDict)
+    //  val indexedAll = DataProcess.negativeJoin(indexed, itemDict, userDict, param.negativeK)
+     //   .withColumn("label", add1(col("label")))
+     // indexedAll.write.mode(SaveMode.Overwrite).parquet(param.dataPathParams.preprocessedDir + "/indexedNeg" + param.negativeK)
+      (indexed, userDict, itemDict)
     }
-
 
     def processNcfWithKmeans(indexed: DataFrame, userDict: DataFrame) = {
 
@@ -217,12 +216,14 @@ object TrainWithEnsambleNCF_Glove {
     predictionsAll.join(validationDFWithK, Array("userId", "itemId"))
   }
 
-  def getGoldenDF(sqlContext: SQLContext, param: AppParams) = {
-    val validationIn = sqlContext.read.parquet(param.dataPathParams.evaluateDir)
+  def getGoldenDF(sqlContext: SQLContext, dictDir:String, goldDir:String, labelCol:String = "is_clicked") = {
+    val goldIn = sqlContext.read.parquet(goldDir)
 
-    val validationCleaned1 = validationIn
-      .select("resume_id", "job_id", "resume.resume.normalizedBody", "description", "apply_flag")
-      .withColumn("label", add1(col("apply_flag")))
+   // println("raw data")
+   // println(goldIn.count())
+    val goldCleaned1 = goldIn
+      .select("resume_id", "job_id", "resume.resume.normalizedBody", "description", "apply_flag","is_clicked")
+      .withColumn("label", add1(col(labelCol)))
       .withColumnRenamed("resume.resume.normalizedBody", "normalizedBody")
       .withColumnRenamed("normalizedBody", "userDoc")
       .withColumnRenamed("description", "itemDoc")
@@ -232,28 +233,33 @@ object TrainWithEnsambleNCF_Glove {
       .withColumnRenamed("job_id", "itemId")
       .withColumnRenamed("resume_id", "userId")
 
-    val dict: Map[String, Array[Float]] = loadWordVecMap(param.gloveParams.dictDir)
+    val dict: Map[String, Array[Float]] = loadWordVecMap(dictDir)
     val br: Broadcast[Map[String, Array[Float]]] = sqlContext.sparkContext.broadcast(dict)
 
-    val validationCleaned = DataProcess.cleanData(validationCleaned1, br.value)
+    val goldCleaned = DataProcess.cleanData(goldCleaned1, br.value)
       .withColumnRenamed("itemId", "job_id")
       .withColumnRenamed("userId", "resume_id")
 
-    val validationVec = DataProcess.getGloveVectors(validationCleaned, br)
+   // println("cleaned")
+   // println(goldCleaned.count())
+
+    val goldVec = DataProcess.getGloveVectors(goldCleaned, br)
 
     val si1 = new StringIndexer().setInputCol("resume_id").setOutputCol("userId")
     val si2 = new StringIndexer().setInputCol("job_id").setOutputCol("itemId")
 
     val pipeline = new Pipeline().setStages(Array(si1, si2))
-    val pipelineModel = pipeline.fit(validationVec)
-    val validationDF: DataFrame = pipelineModel.transform(validationVec)
+    val pipelineModel = pipeline.fit(goldVec)
+    val goldDF: DataFrame = pipelineModel.transform(goldVec)
 
-    validationDF
+//    println("indexed")
+ //   println(goldDF.count())
+    goldDF
   }
 
   def evaluateWithGoldenData(sqlContext: SQLContext, param: AppParams) = {
 
-    val validationDF: DataFrame = getGoldenDF(sqlContext, param)
+    val validationDF: DataFrame = getGoldenDF(sqlContext, param.gloveParams.dictDir, param.dataPathParams.evaluateDir)
 
     validationDF.persist(StorageLevel.DISK_ONLY)
     val mode = param.mode
