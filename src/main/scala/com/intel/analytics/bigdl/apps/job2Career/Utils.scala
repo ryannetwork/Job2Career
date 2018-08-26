@@ -31,7 +31,7 @@ object Utils {
                        evaluateDir: String,
                        labelCol: String)
 
-  case class AppParams(dataPathParams: DataParam = DataParam("/home/arda/intelWork/projects/jobs2Career/data/validation-with-click_2018-04-01_2018-04-30_click-filter", "/home/arda/intelWork/projects/jobs2Career/preprocessed/", "/home/arda/intelWork/projects/jobs2Career/modelOutput/", "/home/arda/intelWork/projects/jobs2Career/data/validation-with-click_2018-03-01_2018-03-31_click-filter", "is_clicked"),
+  case class AppParams(dataPathParams: DataParam = DataParam("/home/arda/intelWork/projects/jobs2Career/data/validation-with-click_2018-*", "/home/arda/intelWork/projects/jobs2Career/preprocessed/", "/home/arda/intelWork/projects/jobs2Career/modelOutput/", "/home/arda/intelWork/projects/jobs2Career/data/validation-with-click_2018-03-01_2018-03-31_click-filter", "is_clicked"),
                        //       ncfParams: NCFParam = NCFParam(1024, 10, 5e-3, 1e-6, true, "/Users/guoqiong/intelWork/projects/jobs2Career/model/ncf"),
                        ncfParams: NCFParam = NCFParam(1024, 20, 5e-2, 1e-6, true, "/home/arda/intelWork/projects/jobs2Career/model/ncfWithKmeans"),
                        kmeansParams: KmeansParam = KmeansParam(3, 20, true, "userVec", "/home/arda/intelWork/projects/jobs2Career/model/kmeans"),

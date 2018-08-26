@@ -269,7 +269,9 @@ object TrainWithEnsambleNCF_Glove {
       }
       case Utils.Mode_NCF =>
         val loadedModel = ZooModel.loadModel(param.ncfParams.modelPath, null).asInstanceOf[NCFJob2Career]
-        ncfPredict(loadedModel, sqlContext, validationDF)
+        val tmpPredictions = ncfPredict(loadedModel, sqlContext, validationDF)
+       (tmpPredictions.join(validationDF, Array("userId", "itemId")))
+
       case _ =>
         throw new IllegalArgumentException(s"mode $mode not supported")
     }
